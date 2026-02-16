@@ -1,0 +1,19 @@
+# Go
+bin/
+tmp/
+*.exe
+*.out
+*.test
+
+# Logs
+*.log
+
+# Env
+.env
+.env.*
+
+# Data
+data/
+
+# OS
+.DS_Store

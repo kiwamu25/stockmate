@@ -1,0 +1,14 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DB_DSN: "sqlite:./data/stockmate.db"
+    volumes:
+      - stockmate_data:/app/data
+    ports:
+      - "8080:8080"
+
+volumes:
+  stockmate_data:
