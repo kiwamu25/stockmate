@@ -5,29 +5,41 @@ import (
 	"fmt"
 )
 
+const pragmaFK = `PRAGMA foreign_keys = ON;`
+
 const createItems = `
 CREATE TABLE IF NOT EXISTS items (
-  item_id INT AUTO_INCREMENT PRIMARY KEY,
-  sku VARCHAR(50) NOT NULL UNIQUE,
-  name VARCHAR(100) NOT NULL,
-  category ENUM('material','part','product') NOT NULL,
-  base_unit ENUM('g','pcs') NOT NULL,
-  stock_managed BOOLEAN NOT NULL DEFAULT TRUE,
+  item_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sku TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL CHECK (category IN ('material','part','product')),
+  base_unit TEXT NOT NULL CHECK (base_unit IN ('g','pcs')),
+  stock_managed INTEGER NOT NULL DEFAULT 1 CHECK (stock_managed IN (0,1)),
   note TEXT,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+`
+
+// updated_at 自動更新（SQLiteは ON UPDATE が無いのでトリガ）
+const triggerItemsUpdatedAt = `
+CREATE TRIGGER IF NOT EXISTS trg_items_updated_at
+AFTER UPDATE ON items
+FOR EACH ROW
+BEGIN
+  UPDATE items SET updated_at = datetime('now') WHERE item_id = OLD.item_id;
+END;
 `
 
 const createStockTransactions = `
 CREATE TABLE IF NOT EXISTS stock_transactions (
-  transaction_id INT AUTO_INCREMENT PRIMARY KEY,
-  item_id INT NOT NULL,
-  qty DECIMAL(12,2) NOT NULL,
-  transaction_type ENUM('IN','OUT','ADJUST') NOT NULL,
-  note VARCHAR(255),
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_st_item FOREIGN KEY (item_id) REFERENCES items(item_id)
+  transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id INTEGER NOT NULL,
+  qty REAL NOT NULL, -- gもpcsもここ。pcsは整数運用
+  transaction_type TEXT NOT NULL CHECK (transaction_type IN ('IN','OUT','ADJUST')),
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (item_id) REFERENCES items(item_id)
 );
 `
 
@@ -37,28 +49,28 @@ CREATE INDEX IF NOT EXISTS idx_st_item ON stock_transactions(item_id);
 
 const createPartBOM = `
 CREATE TABLE IF NOT EXISTS part_bom (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  part_item_id INT NOT NULL,
-  material_item_id INT NOT NULL,
-  qty_g DECIMAL(10,2) NOT NULL,
-  loss_rate DECIMAL(6,4) NOT NULL DEFAULT 1.0000,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_pb_part FOREIGN KEY (part_item_id) REFERENCES items(item_id),
-  CONSTRAINT fk_pb_material FOREIGN KEY (material_item_id) REFERENCES items(item_id),
-  UNIQUE KEY uq_part_material (part_item_id, material_item_id)
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  part_item_id INTEGER NOT NULL,
+  material_item_id INTEGER NOT NULL,
+  qty_g REAL NOT NULL,
+  loss_rate REAL NOT NULL DEFAULT 1.0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (part_item_id) REFERENCES items(item_id),
+  FOREIGN KEY (material_item_id) REFERENCES items(item_id),
+  UNIQUE (part_item_id, material_item_id)
 );
 `
 
 const createProductBOM = `
 CREATE TABLE IF NOT EXISTS product_bom (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  product_item_id INT NOT NULL,
-  part_item_id INT NOT NULL,
-  qty_pcs INT NOT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_prb_product FOREIGN KEY (product_item_id) REFERENCES items(item_id),
-  CONSTRAINT fk_prb_part FOREIGN KEY (part_item_id) REFERENCES items(item_id),
-  UNIQUE KEY uq_product_part (product_item_id, part_item_id)
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_item_id INTEGER NOT NULL,
+  part_item_id INTEGER NOT NULL,
+  qty_pcs INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (product_item_id) REFERENCES items(item_id),
+  FOREIGN KEY (part_item_id) REFERENCES items(item_id),
+  UNIQUE (product_item_id, part_item_id)
 );
 `
 
@@ -67,9 +79,11 @@ func Migrate(db *sql.DB) error {
 		name string
 		sql  string
 	}{
+		{"pragma foreign_keys", pragmaFK},
 		{"create items", createItems},
+		{"trigger items.updated_at", triggerItemsUpdatedAt},
 		{"create stock_transactions", createStockTransactions},
-		{"create index stock_transactions(item_id)", createIdxStockTransactionsItem},
+		{"index stock_transactions(item_id)", createIdxStockTransactionsItem},
 		{"create part_bom", createPartBOM},
 		{"create product_bom", createProductBOM},
 	}

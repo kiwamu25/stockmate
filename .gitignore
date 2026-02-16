@@ -4,6 +4,12 @@ tmp/
 *.exe
 *.out
 *.test
+coverage.out
+
+# Node / React
+node_modules/
+dist/
+build/
 
 # Logs
 *.log
@@ -12,8 +18,9 @@ tmp/
 .env
 .env.*
 
-# Data
+# SQLite
 data/
+*.db
 
 # OS
 .DS_Store
