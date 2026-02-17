@@ -1,20 +1,14 @@
 import { useEffect, useState } from "react";
-
-type Item = {
-  id: number;
-  sku: string;
-  name: string;
-  category: string;
-  base_unit: string;
-  stock_managed: boolean;
-  note?: string;
-  created_at?: string;
-  updated_at?: string;
-};
+import { Navigate, Route, Routes } from "react-router-dom";
+import Nav from "./components/Nav";
+import CreateItemPage from "./pages/CreateItemPage";
+import HomePage from "./pages/HomePage";
+import ItemsPage from "./pages/ItemsPage";
+import type { Item } from "./types/item";
 
 export default function App() {
   const [items, setItems] = useState<Item[]>([]);
-  const [error, setError] = useState<string>("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     fetch("/api/items")
@@ -22,69 +16,19 @@ export default function App() {
         if (!res.ok) throw new Error("API error");
         return res.json();
       })
-      .then((data) => setItems(data))
-      .catch((err) => setError(err.message));
+      .then((data: Item[]) => setItems(data))
+      .catch((e) => setError(e instanceof Error ? e.message : "API error"));
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-100 p-8">
-      <div className="max-w-6xl mx-auto bg-white shadow rounded-xl p-6">
-        <h1 className="text-3xl font-bold text-gray-800 mb-6">
-          AppBase
-        </h1>
-
-        {error && (
-          <div className="bg-red-100 text-red-700 px-4 py-2 rounded mb-4">
-            {error}
-          </div>
-        )}
-
-        {items.length === 0 ? (
-          <p className="text-gray-500">No items yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-gray-200 text-left text-sm uppercase tracking-wider">
-                  <th className="p-3">ID</th>
-                  <th className="p-3">SKU</th>
-                  <th className="p-3">Name</th>
-                  <th className="p-3">Category</th>
-                  <th className="p-3">Unit</th>
-                  <th className="p-3">Managed</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="border-b hover:bg-gray-50 transition"
-                  >
-                    <td className="p-3 text-sm text-gray-700">{item.id}</td>
-                    <td className="p-3 font-mono text-sm">
-                      {item.sku}
-                    </td>
-                    <td className="p-3 text-sm">{item.name}</td>
-                    <td className="p-3 text-sm capitalize">
-                      {item.category}
-                    </td>
-                    <td className="p-3 text-sm">{item.base_unit}</td>
-                    <td className="p-3 text-sm">
-                      {item.stock_managed ? (
-                        <span className="text-green-600 font-semibold">
-                          Yes
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">No</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+    <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-800 to-gray-700">
+      <Nav />
+      <Routes>
+        <Route path="/" element={<HomePage items={items} />} />
+        <Route path="/items" element={<ItemsPage items={items} error={error} />} />
+        <Route path="/items/new" element={<CreateItemPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </div>
   );
 }
