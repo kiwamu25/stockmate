@@ -4,11 +4,9 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      DB_DSN: "sqlite:./data/stockmate.db"
+      DB_DSN: "sqlite:./data/app.db"
+      PORT: 8080
     volumes:
       - ./data:/app/data
     ports:
       - "8080:8080"
-
-volumes:
-  stockmate_data:
