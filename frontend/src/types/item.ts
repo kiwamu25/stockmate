@@ -1,9 +1,12 @@
 export type Item = {
   id: number;
+  series_id?: number;
   sku: string;
   name: string;
   category: "material" | "part" | "product";
-  base_unit: "g" | "pcs";
+  pack_qty?: number;
+  managed_unit: "g" | "pcs";
+  rev_code?: string;
   stock_managed: boolean;
   note?: string;
   created_at?: string;

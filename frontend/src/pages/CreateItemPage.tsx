@@ -10,7 +10,9 @@ export default function CreateItemPage() {
     sku: "",
     name: "",
     category: "product" as Item["category"],
-    base_unit: "pcs" as Item["base_unit"],
+    managed_unit: "pcs" as Item["managed_unit"],
+    pack_qty: "",
+    rev_code: "",
     stock_managed: true,
     note: "",
   });
@@ -21,8 +23,17 @@ export default function CreateItemPage() {
 
     const sku = form.sku.trim();
     const name = form.name.trim();
+    const packQtyText = form.pack_qty.trim();
+    const packQty = packQtyText === "" ? null : Number(packQtyText);
     if (!sku || !name) {
       setError("SKU and Name are required.");
+      return;
+    }
+    if (
+      packQtyText !== "" &&
+      (packQty === null || !Number.isFinite(packQty) || packQty <= 0)
+    ) {
+      setError("Pack Qty must be a positive number.");
       return;
     }
 
@@ -35,7 +46,9 @@ export default function CreateItemPage() {
           sku,
           name,
           category: form.category,
-          base_unit: form.base_unit,
+          managed_unit: form.managed_unit,
+          pack_qty: packQty,
+          rev_code: form.rev_code.trim(),
           stock_managed: form.stock_managed,
           note: form.note.trim(),
         }),
@@ -101,17 +114,40 @@ export default function CreateItemPage() {
           </label>
 
           <label className="text-sm font-medium text-gray-700">
-            Base Unit
+            Managed Unit
             <select
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-              value={form.base_unit}
+              value={form.managed_unit}
               onChange={(e) =>
-                setForm((f) => ({ ...f, base_unit: e.target.value as Item["base_unit"] }))
+                setForm((f) => ({ ...f, managed_unit: e.target.value as Item["managed_unit"] }))
               }
             >
               <option value="pcs">pcs</option>
               <option value="g">g</option>
             </select>
+          </label>
+
+          <label className="text-sm font-medium text-gray-700">
+            Pack Qty
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+              value={form.pack_qty}
+              onChange={(e) => setForm((f) => ({ ...f, pack_qty: e.target.value }))}
+              placeholder="optional"
+            />
+          </label>
+
+          <label className="text-sm font-medium text-gray-700 md:col-span-2">
+            Rev Code
+            <input
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+              value={form.rev_code}
+              onChange={(e) => setForm((f) => ({ ...f, rev_code: e.target.value }))}
+              placeholder="A / B / C"
+            />
           </label>
 
           <label className="text-sm font-medium text-gray-700 md:col-span-2">

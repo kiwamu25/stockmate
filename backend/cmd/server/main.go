@@ -6,21 +6,25 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"stockmate/internal/db"
 )
 
 type Item struct {
-	ID           int64  `json:"id"`
-	SKU          string `json:"sku"`
-	Name         string `json:"name"`
-	Category     string `json:"category"`      // material / part / product
-	BaseUnit     string `json:"base_unit"`     // g / pcs
-	StockManaged bool   `json:"stock_managed"` // true/false
-	Note         string `json:"note,omitempty"`
-	CreatedAt    string `json:"created_at,omitempty"`
-	UpdatedAt    string `json:"updated_at,omitempty"`
+	ID           int64    `json:"id"`
+	SeriesID     *int64   `json:"series_id,omitempty"`
+	SKU          string   `json:"sku"`
+	Name         string   `json:"name"`
+	Category     string   `json:"category"` // material / part / product
+	PackQty      *float64 `json:"pack_qty,omitempty"`
+	ManagedUnit  string   `json:"managed_unit"` // g / pcs
+	RevCode      string   `json:"rev_code,omitempty"`
+	StockManaged bool     `json:"stock_managed"` // true/false
+	Note         string   `json:"note,omitempty"`
+	CreatedAt    string   `json:"created_at,omitempty"`
+	UpdatedAt    string   `json:"updated_at,omitempty"`
 }
 
 func main() {
@@ -75,12 +79,16 @@ func main() {
 
 func createItem(dbx *sql.DB) http.HandlerFunc {
 	type Req struct {
-		SKU          string `json:"sku"`
-		Name         string `json:"name"`
-		Category     string `json:"category"`      // material/part/product
-		BaseUnit     string `json:"base_unit"`     // g/pcs
-		StockManaged *bool  `json:"stock_managed"` // optional
-		Note         string `json:"note"`
+		SeriesID     *int64   `json:"series_id"`
+		SKU          string   `json:"sku"`
+		Name         string   `json:"name"`
+		Category     string   `json:"category"`     // material/part/product
+		ManagedUnit  string   `json:"managed_unit"` // g/pcs
+		BaseUnit     string   `json:"base_unit"`    // legacy alias
+		PackQty      *float64 `json:"pack_qty"`     // optional
+		RevCode      string   `json:"rev_code"`
+		StockManaged *bool    `json:"stock_managed"` // optional
+		Note         string   `json:"note"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +98,10 @@ func createItem(dbx *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		req.SKU = strings.TrimSpace(req.SKU)
+		req.Name = strings.TrimSpace(req.Name)
+		req.RevCode = strings.TrimSpace(req.RevCode)
+		req.Note = strings.TrimSpace(req.Note)
 		if req.SKU == "" || req.Name == "" {
 			http.Error(w, "sku and name required", http.StatusBadRequest)
 			return
@@ -99,8 +111,20 @@ func createItem(dbx *sql.DB) http.HandlerFunc {
 		if req.Category == "" {
 			req.Category = "product"
 		}
-		if req.BaseUnit == "" {
-			req.BaseUnit = "pcs"
+		unit := req.ManagedUnit
+		if unit == "" {
+			unit = req.BaseUnit // backward compatibility
+		}
+		if unit == "" {
+			unit = "pcs"
+		}
+		if unit != "g" && unit != "pcs" {
+			http.Error(w, "managed_unit must be g or pcs", http.StatusBadRequest)
+			return
+		}
+		if req.PackQty != nil && *req.PackQty <= 0 {
+			http.Error(w, "pack_qty must be > 0", http.StatusBadRequest)
+			return
 		}
 		stockManaged := true
 		if req.StockManaged != nil {
@@ -113,10 +137,19 @@ func createItem(dbx *sql.DB) http.HandlerFunc {
 			sm = 1
 		}
 
+		var seriesID any = nil
+		if req.SeriesID != nil {
+			seriesID = *req.SeriesID
+		}
+		var packQty any = nil
+		if req.PackQty != nil {
+			packQty = *req.PackQty
+		}
+
 		res, err := dbx.Exec(`
-INSERT INTO items(sku, name, category, base_unit, stock_managed, note)
-VALUES(?,?,?,?,?,?)
-`, req.SKU, req.Name, req.Category, req.BaseUnit, sm, req.Note)
+INSERT INTO items(series_id, sku, name, category, stock_managed, pack_qty, managed_unit, rev_code, note)
+VALUES(?,?,?,?,?,?,?,?,?)
+`, seriesID, req.SKU, req.Name, req.Category, sm, packQty, unit, req.RevCode, req.Note)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -127,10 +160,13 @@ VALUES(?,?,?,?,?,?)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(Item{
 			ID:           id,
+			SeriesID:     req.SeriesID,
 			SKU:          req.SKU,
 			Name:         req.Name,
 			Category:     req.Category,
-			BaseUnit:     req.BaseUnit,
+			PackQty:      req.PackQty,
+			ManagedUnit:  unit,
+			RevCode:      req.RevCode,
 			StockManaged: stockManaged,
 			Note:         req.Note,
 		})
@@ -142,10 +178,13 @@ func listItems(dbx *sql.DB) http.HandlerFunc {
 		rows, err := dbx.Query(`
 SELECT
   item_id AS id,
+  series_id,
   sku,
   name,
   category,
-  base_unit,
+  pack_qty,
+  managed_unit,
+  rev_code,
   stock_managed,
   note,
   created_at,
@@ -163,13 +202,18 @@ LIMIT 200
 		out := make([]Item, 0)
 		for rows.Next() {
 			var it Item
+			var seriesID sql.NullInt64
+			var packQty sql.NullFloat64
 			var sm int
 			if err := rows.Scan(
 				&it.ID,
+				&seriesID,
 				&it.SKU,
 				&it.Name,
 				&it.Category,
-				&it.BaseUnit,
+				&packQty,
+				&it.ManagedUnit,
+				&it.RevCode,
 				&sm,
 				&it.Note,
 				&it.CreatedAt,
@@ -177,6 +221,14 @@ LIMIT 200
 			); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
+			}
+			if seriesID.Valid {
+				sid := seriesID.Int64
+				it.SeriesID = &sid
+			}
+			if packQty.Valid {
+				pq := packQty.Float64
+				it.PackQty = &pq
 			}
 			it.StockManaged = (sm != 0)
 			out = append(out, it)

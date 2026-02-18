@@ -31,6 +31,7 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                   <th className="p-3">Name</th>
                   <th className="p-3">Category</th>
                   <th className="p-3">Unit</th>
+                  <th className="p-3">Rev</th>
                   <th className="p-3">Managed</th>
                 </tr>
               </thead>
@@ -41,7 +42,8 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                     <td className="p-3 font-mono text-sm text-gray-900">{item.sku}</td>
                     <td className="p-3 text-sm text-gray-900">{item.name}</td>
                     <td className="p-3 text-sm capitalize text-gray-700">{item.category}</td>
-                    <td className="p-3 text-sm text-gray-700">{item.base_unit}</td>
+                    <td className="p-3 text-sm text-gray-700">{item.managed_unit}</td>
+                    <td className="p-3 text-sm text-gray-700">{item.rev_code || "-"}</td>
                     <td className="p-3 text-sm">
                       {item.stock_managed ? (
                         <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700">
