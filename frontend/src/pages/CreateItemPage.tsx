@@ -1,11 +1,14 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import ItemCsvTools from "../components/ItemCsvTools";
 import type { Item } from "../types/item";
 
 export default function CreateItemPage() {
   const navigate = useNavigate();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [historyError, setHistoryError] = useState("");
+  const [historyItems, setHistoryItems] = useState<Item[]>([]);
   const [form, setForm] = useState({
     sku: "",
     name: "",
@@ -30,6 +33,54 @@ export default function CreateItemPage() {
     manufacturer: "",
     note: "",
   });
+
+  function resetFormsByCategory(category: Item["category"]) {
+    setForm({
+      sku: "",
+      name: "",
+      category,
+      managed_unit: "pcs",
+      pack_qty: "",
+      rev_code: "",
+      stock_managed: true,
+      note: "",
+    });
+    setProductForm({
+      total_weight: "",
+      pack_size: "",
+      note: "",
+    });
+    setMaterialForm({
+      manufacturer: "",
+      material_type: "",
+      color: "",
+    });
+    setPartForm({
+      manufacturer: "",
+      note: "",
+    });
+  }
+
+  const loadHistoryItems = useCallback(async () => {
+    setHistoryError("");
+    try {
+      const res = await fetch("/api/items");
+      if (!res.ok) throw new Error("failed to load items");
+      const data: Item[] = await res.json();
+      setHistoryItems(data);
+    } catch (e) {
+      setHistoryError(e instanceof Error ? e.message : "failed to load items");
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadHistoryItems();
+  }, [loadHistoryItems]);
+
+  const filteredHistory = useMemo(
+    () => historyItems.filter((item) => item.category === form.category).slice(0, 8),
+    [historyItems, form.category],
+  );
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -111,13 +162,44 @@ export default function CreateItemPage() {
     }
   }
 
+  function copyFromHistory(item: Item) {
+    setForm((f) => ({
+      ...f,
+      sku: item.sku,
+      name: item.name,
+      category: item.category,
+      managed_unit: item.managed_unit,
+      pack_qty: item.pack_qty?.toString() ?? "",
+      rev_code: item.rev_code ?? "",
+      stock_managed: item.stock_managed,
+      note: item.note ?? "",
+    }));
+
+    setProductForm({
+      total_weight: item.product?.total_weight?.toString() ?? "",
+      pack_size: item.product?.pack_size ?? "",
+      note: item.product?.note ?? "",
+    });
+    setMaterialForm({
+      manufacturer: item.material?.manufacturer ?? "",
+      material_type: item.material?.material_type ?? "",
+      color: item.material?.color ?? "",
+    });
+    setPartForm({
+      manufacturer: item.part?.manufacturer ?? "",
+      note: item.part?.note ?? "",
+    });
+  }
+
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-10 md:px-6">
+    <main className="mx-auto w-full max-w-7xl px-4 py-10 md:px-6">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
         <h1 className="text-2xl font-black text-gray-900">Create Item</h1>
         <p className="mt-2 text-sm text-gray-600">
           Add an inventory item with category and base unit.
         </p>
+        <ItemCsvTools onImported={loadHistoryItems} />
 
         {error && (
           <div className="mt-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">
@@ -151,9 +233,7 @@ export default function CreateItemPage() {
             <select
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
               value={form.category}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, category: e.target.value as Item["category"] }))
-              }
+              onChange={(e) => resetFormsByCategory(e.target.value as Item["category"])}
             >
               <option value="material">material</option>
               <option value="part">part</option>
@@ -184,7 +264,7 @@ export default function CreateItemPage() {
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
               value={form.pack_qty}
               onChange={(e) => setForm((f) => ({ ...f, pack_qty: e.target.value }))}
-              placeholder="optional"
+              placeholder="initial stock quantity if applicable"
             />
           </label>
 
@@ -232,7 +312,7 @@ export default function CreateItemPage() {
                   onChange={(e) =>
                     setProductForm((f) => ({ ...f, pack_size: e.target.value }))
                   }
-                  placeholder="10pcs / box"
+                  placeholder="w x d x h cm"
                 />
               </label>
               <label className="text-sm font-medium text-gray-700 md:col-span-2">
@@ -327,6 +407,67 @@ export default function CreateItemPage() {
             {saving ? "Saving..." : "Create Item"}
           </button>
         </form>
+      </div>
+        <section className="self-start rounded-2xl border border-gray-200 bg-white p-5 shadow-sm lg:sticky lg:top-24">
+          <h2 className="text-base font-bold text-gray-900">
+            Recent {form.category} Items
+          </h2>
+          <p className="mt-1 text-xs text-gray-500">
+            Showing latest registrations for the selected category.
+          </p>
+
+          {historyError && (
+            <div className="mt-3 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">
+              {historyError}
+            </div>
+          )}
+
+          {!historyError && filteredHistory.length === 0 && (
+            <p className="mt-3 text-sm text-gray-500">No history for this category yet.</p>
+          )}
+
+          {filteredHistory.length > 0 && (
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="bg-gray-100 text-left text-xs uppercase tracking-wide text-gray-600">
+                    <th className="p-2">SKU</th>
+                    <th className="p-2">Name</th>
+                    <th className="p-2">Rev</th>
+                    <th className="p-2">Unit</th>
+                    <th className="p-2">Copy</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredHistory.map((item) => (
+                    <tr
+                      key={item.id}
+                      className="cursor-pointer border-b border-gray-100 hover:bg-gray-50"
+                      onClick={() => copyFromHistory(item)}
+                    >
+                      <td className="p-2 font-mono">{item.sku}</td>
+                      <td className="p-2">{item.name}</td>
+                      <td className="p-2">{item.rev_code || "-"}</td>
+                      <td className="p-2">{item.managed_unit}</td>
+                      <td className="p-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            copyFromHistory(item);
+                          }}
+                          className="rounded-full bg-gray-900 px-3 py-1 text-xs font-semibold text-white hover:bg-black"
+                        >
+                          Copy
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       </div>
     </main>
   );
