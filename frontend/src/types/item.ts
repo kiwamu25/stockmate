@@ -11,4 +11,18 @@ export type Item = {
   note?: string;
   created_at?: string;
   updated_at?: string;
+  product?: {
+    total_weight?: number;
+    pack_size?: string;
+    note?: string;
+  };
+  material?: {
+    manufacturer?: string;
+    material_type?: string;
+    color?: string;
+  };
+  part?: {
+    manufacturer?: string;
+    note?: string;
+  };
 };

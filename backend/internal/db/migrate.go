@@ -118,7 +118,6 @@ func Migrate(db *sql.DB) error {
 		{"pragma foreign_keys", pragmaFK},
 		{"create series", createSeries},
 		{"create items", createItems},
-		{"index items(series_id)", createIdxItemsSeries},
 		{"trigger items.updated_at", triggerItemsUpdatedAt},
 		{"create products", createProducts},
 		{"create material", createMaterial},
@@ -137,6 +136,13 @@ func Migrate(db *sql.DB) error {
 	// 既存DB互換: 旧itemsスキーマに必要列を後付けする
 	if err := ensureItemsColumns(db); err != nil {
 		return fmt.Errorf("migration failed at ensure items columns: %w", err)
+	}
+	if _, err := db.Exec(createIdxItemsSeries); err != nil {
+		return fmt.Errorf("migration failed at index items(series_id): %w", err)
+	}
+	// 既存データ互換: category別サブテーブル行を補完
+	if err := ensureCategorySubtableRows(db); err != nil {
+		return fmt.Errorf("migration failed at ensure category subtable rows: %w", err)
 	}
 
 	return nil
@@ -208,4 +214,37 @@ func getTableColumns(db *sql.DB, table string) (map[string]struct{}, error) {
 		out[name] = struct{}{}
 	}
 	return out, rows.Err()
+}
+
+func ensureCategorySubtableRows(db *sql.DB) error {
+	stmts := []string{
+		`
+INSERT INTO products(item_id)
+SELECT i.item_id
+FROM items i
+LEFT JOIN products p ON p.item_id = i.item_id
+WHERE i.category = 'product' AND p.item_id IS NULL
+`,
+		`
+INSERT INTO material(item_id)
+SELECT i.item_id
+FROM items i
+LEFT JOIN material m ON m.item_id = i.item_id
+WHERE i.category = 'material' AND m.item_id IS NULL
+`,
+		`
+INSERT INTO parts(item_id)
+SELECT i.item_id
+FROM items i
+LEFT JOIN parts pt ON pt.item_id = i.item_id
+WHERE i.category = 'part' AND pt.item_id IS NULL
+`,
+	}
+
+	for _, q := range stmts {
+		if _, err := db.Exec(q); err != nil {
+			return err
+		}
+	}
+	return nil
 }

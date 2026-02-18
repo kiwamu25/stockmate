@@ -16,6 +16,20 @@ export default function CreateItemPage() {
     stock_managed: true,
     note: "",
   });
+  const [productForm, setProductForm] = useState({
+    total_weight: "",
+    pack_size: "",
+    note: "",
+  });
+  const [materialForm, setMaterialForm] = useState({
+    manufacturer: "",
+    material_type: "",
+    color: "",
+  });
+  const [partForm, setPartForm] = useState({
+    manufacturer: "",
+    note: "",
+  });
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -25,6 +39,9 @@ export default function CreateItemPage() {
     const name = form.name.trim();
     const packQtyText = form.pack_qty.trim();
     const packQty = packQtyText === "" ? null : Number(packQtyText);
+    const productTotalWeightText = productForm.total_weight.trim();
+    const productTotalWeight =
+      productTotalWeightText === "" ? null : Number(productTotalWeightText);
     if (!sku || !name) {
       setError("SKU and Name are required.");
       return;
@@ -36,22 +53,53 @@ export default function CreateItemPage() {
       setError("Pack Qty must be a positive number.");
       return;
     }
+    if (
+      form.category === "product" &&
+      productTotalWeightText !== "" &&
+      (productTotalWeight === null ||
+        !Number.isFinite(productTotalWeight) ||
+        productTotalWeight <= 0)
+    ) {
+      setError("Total Weight must be a positive number.");
+      return;
+    }
 
     setSaving(true);
     try {
+      const payload: Record<string, unknown> = {
+        sku,
+        name,
+        category: form.category,
+        managed_unit: form.managed_unit,
+        pack_qty: packQty,
+        rev_code: form.rev_code.trim(),
+        stock_managed: form.stock_managed,
+        note: form.note.trim(),
+      };
+
+      if (form.category === "product") {
+        payload.product = {
+          total_weight: productTotalWeight,
+          pack_size: productForm.pack_size.trim(),
+          note: productForm.note.trim(),
+        };
+      } else if (form.category === "material") {
+        payload.material = {
+          manufacturer: materialForm.manufacturer.trim(),
+          material_type: materialForm.material_type.trim(),
+          color: materialForm.color.trim(),
+        };
+      } else if (form.category === "part") {
+        payload.part = {
+          manufacturer: partForm.manufacturer.trim(),
+          note: partForm.note.trim(),
+        };
+      }
+
       const res = await fetch("/api/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sku,
-          name,
-          category: form.category,
-          managed_unit: form.managed_unit,
-          pack_qty: packQty,
-          rev_code: form.rev_code.trim(),
-          stock_managed: form.stock_managed,
-          note: form.note.trim(),
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) throw new Error(await res.text());
@@ -159,6 +207,106 @@ export default function CreateItemPage() {
               placeholder="optional"
             />
           </label>
+
+          {form.category === "product" && (
+            <>
+              <label className="text-sm font-medium text-gray-700">
+                Product Total Weight (g)
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                  value={productForm.total_weight}
+                  onChange={(e) =>
+                    setProductForm((f) => ({ ...f, total_weight: e.target.value }))
+                  }
+                  placeholder="optional"
+                />
+              </label>
+              <label className="text-sm font-medium text-gray-700">
+                Pack Size
+                <input
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                  value={productForm.pack_size}
+                  onChange={(e) =>
+                    setProductForm((f) => ({ ...f, pack_size: e.target.value }))
+                  }
+                  placeholder="10pcs / box"
+                />
+              </label>
+              <label className="text-sm font-medium text-gray-700 md:col-span-2">
+                Product Note
+                <input
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                  value={productForm.note}
+                  onChange={(e) => setProductForm((f) => ({ ...f, note: e.target.value }))}
+                  placeholder="optional"
+                />
+              </label>
+            </>
+          )}
+
+          {form.category === "material" && (
+            <>
+              <label className="text-sm font-medium text-gray-700">
+                Material Manufacturer
+                <input
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                  value={materialForm.manufacturer}
+                  onChange={(e) =>
+                    setMaterialForm((f) => ({ ...f, manufacturer: e.target.value }))
+                  }
+                  placeholder="Bambu Lab"
+                />
+              </label>
+              <label className="text-sm font-medium text-gray-700">
+                Material Type
+                <input
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                  value={materialForm.material_type}
+                  onChange={(e) =>
+                    setMaterialForm((f) => ({ ...f, material_type: e.target.value }))
+                  }
+                  placeholder="PLA / TPU / ASA"
+                />
+              </label>
+              <label className="text-sm font-medium text-gray-700 md:col-span-2">
+                Color
+                <input
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                  value={materialForm.color}
+                  onChange={(e) => setMaterialForm((f) => ({ ...f, color: e.target.value }))}
+                  placeholder="Black"
+                />
+              </label>
+            </>
+          )}
+
+          {form.category === "part" && (
+            <>
+              <label className="text-sm font-medium text-gray-700">
+                Part Manufacturer
+                <input
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                  value={partForm.manufacturer}
+                  onChange={(e) =>
+                    setPartForm((f) => ({ ...f, manufacturer: e.target.value }))
+                  }
+                  placeholder="Maker name"
+                />
+              </label>
+              <label className="text-sm font-medium text-gray-700 md:col-span-2">
+                Part Note
+                <input
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                  value={partForm.note}
+                  onChange={(e) => setPartForm((f) => ({ ...f, note: e.target.value }))}
+                  placeholder="optional"
+                />
+              </label>
+            </>
+          )}
 
           <label className="flex items-center gap-2 text-sm text-gray-700 md:col-span-2">
             <input

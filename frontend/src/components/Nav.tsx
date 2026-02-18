@@ -18,7 +18,7 @@ export default function Nav() {
           <NavLink to="/" className={linkClass}>
             Home
           </NavLink>
-          <NavLink to="/items" className={linkClass}>
+          <NavLink to="/items" end className={linkClass}>
             Items
           </NavLink>
           <NavLink to="/items/new" className={linkClass}>
