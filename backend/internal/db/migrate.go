@@ -89,55 +89,55 @@ const createIdxStockTransactionsItem = `
 CREATE INDEX IF NOT EXISTS idx_st_item ON stock_transactions(item_id);
 `
 
-const createRecipes = `
-CREATE TABLE IF NOT EXISTS recipes (
-  recipe_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  code TEXT NOT NULL UNIQUE,
-  name TEXT NOT NULL,
-  process_type TEXT NOT NULL DEFAULT 'assembly' CHECK (process_type IN ('assembly','processing','mixing')),
-  note TEXT,
+const dropLegacyRecipeTrigger = `
+DROP TRIGGER IF EXISTS trg_recipes_updated_at;
+`
+
+const dropLegacyRecipeInputs = `
+DROP TABLE IF EXISTS recipe_inputs;
+`
+
+const dropLegacyRecipeOutputs = `
+DROP TABLE IF EXISTS recipe_outputs;
+`
+
+const dropLegacyRecipes = `
+DROP TABLE IF EXISTS recipes;
+`
+
+const dropLegacyAssemblyComponents = `
+DROP TABLE IF EXISTS assembly_components;
+`
+
+const createAssemblyRecords = `
+CREATE TABLE IF NOT EXISTS assembly_records (
+  record_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id INTEGER NOT NULL,
+  rev_no INTEGER NOT NULL CHECK (rev_no > 0),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  FOREIGN KEY (item_id) REFERENCES items(item_id) ON DELETE CASCADE,
+  UNIQUE (item_id, rev_no)
 );
 `
 
-const triggerRecipesUpdatedAt = `
-CREATE TRIGGER IF NOT EXISTS trg_recipes_updated_at
-AFTER UPDATE ON recipes
-FOR EACH ROW
-BEGIN
-  UPDATE recipes SET updated_at = datetime('now') WHERE recipe_id = OLD.recipe_id;
-END;
+const createIdxAssemblyRecordsItem = `
+CREATE INDEX IF NOT EXISTS idx_assembly_records_item ON assembly_records(item_id);
 `
 
-const createRecipeInputs = `
-CREATE TABLE IF NOT EXISTS recipe_inputs (
-  recipe_id INTEGER NOT NULL,
-  item_id INTEGER NOT NULL,
-  qty_per_batch REAL NOT NULL CHECK (qty_per_batch > 0),
-  PRIMARY KEY (recipe_id, item_id),
-  FOREIGN KEY (recipe_id) REFERENCES recipes(recipe_id) ON DELETE CASCADE,
-  FOREIGN KEY (item_id) REFERENCES items(item_id)
+const createAssemblyComponents = `
+CREATE TABLE IF NOT EXISTS assembly_components (
+  record_id INTEGER NOT NULL,
+  component_item_id INTEGER NOT NULL,
+  qty_per_unit REAL NOT NULL CHECK (qty_per_unit > 0),
+  note TEXT,
+  PRIMARY KEY (record_id, component_item_id),
+  FOREIGN KEY (record_id) REFERENCES assembly_records(record_id) ON DELETE CASCADE,
+  FOREIGN KEY (component_item_id) REFERENCES items(item_id)
 );
 `
 
-const createRecipeOutputs = `
-CREATE TABLE IF NOT EXISTS recipe_outputs (
-  recipe_id INTEGER NOT NULL,
-  item_id INTEGER NOT NULL,
-  qty_per_batch REAL NOT NULL CHECK (qty_per_batch > 0),
-  PRIMARY KEY (recipe_id, item_id),
-  FOREIGN KEY (recipe_id) REFERENCES recipes(recipe_id) ON DELETE CASCADE,
-  FOREIGN KEY (item_id) REFERENCES items(item_id)
-);
-`
-
-const createIdxRecipeInputsItem = `
-CREATE INDEX IF NOT EXISTS idx_recipe_inputs_item ON recipe_inputs(item_id);
-`
-
-const createIdxRecipeOutputsItem = `
-CREATE INDEX IF NOT EXISTS idx_recipe_outputs_item ON recipe_outputs(item_id);
+const createIdxAssemblyComponentsComponent = `
+CREATE INDEX IF NOT EXISTS idx_assembly_components_component ON assembly_components(component_item_id);
 `
 
 func Migrate(db *sql.DB) error {
@@ -154,12 +154,15 @@ func Migrate(db *sql.DB) error {
 		{"create assemblies", createAssemblies},
 		{"create stock_transactions", createStockTransactions},
 		{"index stock_transactions(item_id)", createIdxStockTransactionsItem},
-		{"create recipes", createRecipes},
-		{"trigger recipes.updated_at", triggerRecipesUpdatedAt},
-		{"create recipe_inputs", createRecipeInputs},
-		{"create recipe_outputs", createRecipeOutputs},
-		{"index recipe_inputs(item_id)", createIdxRecipeInputsItem},
-		{"index recipe_outputs(item_id)", createIdxRecipeOutputsItem},
+		{"drop legacy recipe trigger", dropLegacyRecipeTrigger},
+		{"drop legacy recipe_inputs", dropLegacyRecipeInputs},
+		{"drop legacy recipe_outputs", dropLegacyRecipeOutputs},
+		{"drop legacy recipes", dropLegacyRecipes},
+		{"drop legacy assembly_components", dropLegacyAssemblyComponents},
+		{"create assembly_records", createAssemblyRecords},
+		{"index assembly_records(item_id)", createIdxAssemblyRecordsItem},
+		{"create assembly_components", createAssemblyComponents},
+		{"index assembly_components(component_item_id)", createIdxAssemblyComponentsComponent},
 	}
 
 	for _, s := range stmts {

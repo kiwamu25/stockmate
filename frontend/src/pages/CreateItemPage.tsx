@@ -208,7 +208,7 @@ export default function CreateItemPage() {
 
           <form onSubmit={onSubmit} className="mt-5 grid gap-4 md:grid-cols-2">
             <label className="text-sm font-medium text-gray-700">
-              SKU
+              SKU *
               <input
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
                 value={form.sku}
@@ -218,7 +218,7 @@ export default function CreateItemPage() {
             </label>
 
             <label className="text-sm font-medium text-gray-700">
-              Name
+              Name *
               <input
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
                 value={form.name}
@@ -228,7 +228,7 @@ export default function CreateItemPage() {
             </label>
 
             <label className="text-sm font-medium text-gray-700">
-              Item Type
+              Item Type *
               <select
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
                 value={form.item_type}
@@ -240,7 +240,7 @@ export default function CreateItemPage() {
             </label>
 
             <label className="text-sm font-medium text-gray-700">
-              Managed Unit
+              Managed Unit *
               <select
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
                 value={form.managed_unit}
@@ -390,7 +390,7 @@ export default function CreateItemPage() {
                   setForm((f) => ({ ...f, stock_managed: e.target.checked }))
                 }
               />
-              Stock managed
+              Stock managed *
             </label>
 
             <label className="flex items-center gap-2 text-sm text-gray-700">
@@ -399,7 +399,7 @@ export default function CreateItemPage() {
                 checked={form.is_sellable}
                 onChange={(e) => setForm((f) => ({ ...f, is_sellable: e.target.checked }))}
               />
-              Sellable
+              Sellable *
             </label>
 
             <label className="flex items-center gap-2 text-sm text-gray-700 md:col-span-2">
@@ -408,7 +408,7 @@ export default function CreateItemPage() {
                 checked={form.is_final}
                 onChange={(e) => setForm((f) => ({ ...f, is_final: e.target.checked }))}
               />
-              Final item
+              Final item *
             </label>
 
             <button

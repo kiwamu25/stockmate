@@ -27,6 +27,9 @@ export default function Nav() {
           <NavLink to="/assemblies/builder" className={linkClass}>
             Builder
           </NavLink>
+          <NavLink to="/assemblies/adjust" className={linkClass}>
+            Adjust
+          </NavLink>
         </nav>
       </div>
     </header>
