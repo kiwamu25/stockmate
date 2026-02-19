@@ -8,7 +8,7 @@ type HomePageProps = {
 
 export default function HomePage({ items }: HomePageProps) {
   const counts = useMemo(() => {
-    const base = { material: 0, assembly: 0, sellable: 0, final: 0 };
+    const base = { component: 0, assembly: 0, sellable: 0, final: 0 };
     for (const item of items) {
       base[item.item_type] += 1;
       if (item.is_sellable) base.sellable += 1;
@@ -19,7 +19,7 @@ export default function HomePage({ items }: HomePageProps) {
 
   const cards = [
     { label: "Total Items", value: items.length },
-    { label: "Materials", value: counts.material },
+    { label: "Components", value: counts.component },
     { label: "Assemblies", value: counts.assembly },
     { label: "Sellable", value: counts.sellable },
     { label: "Final", value: counts.final },

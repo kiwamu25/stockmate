@@ -26,7 +26,7 @@ function isDuplicateSkuError(message: string): boolean {
 }
 
 const TYPE_HEADERS: Record<ItemType, string[]> = {
-  material: [
+  component: [
     "sku",
     "name",
     "managed_unit",
@@ -37,9 +37,9 @@ const TYPE_HEADERS: Record<ItemType, string[]> = {
     "is_final",
     "output_category",
     "note",
-    "material_manufacturer",
-    "material_type",
-    "material_color",
+    "component_manufacturer",
+    "component_type",
+    "component_color",
   ],
   assembly: [
     "sku",
@@ -60,7 +60,7 @@ const TYPE_HEADERS: Record<ItemType, string[]> = {
 };
 
 const TEMPLATE_ROWS: Record<ItemType, string[]> = {
-  material: [
+  component: [
     "MAT-001",
     "PLA Black",
     "g",
@@ -207,10 +207,10 @@ function buildPayload(itemType: ItemType, rowMap: Record<string, string>): Recor
       note: (rowMap.assembly_note ?? "").trim(),
     };
   } else {
-    payload.material = {
-      manufacturer: (rowMap.material_manufacturer ?? "").trim(),
-      material_type: (rowMap.material_type ?? "").trim(),
-      color: (rowMap.material_color ?? "").trim(),
+    payload.component = {
+      manufacturer: (rowMap.component_manufacturer ?? "").trim(),
+      component_type: (rowMap.component_type ?? "").trim(),
+      color: (rowMap.component_color ?? "").trim(),
     };
   }
 
@@ -375,10 +375,10 @@ export default function ItemCsvTools({ onImported }: ItemCsvToolsProps) {
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={() => downloadTemplate("material")}
+          onClick={() => downloadTemplate("component")}
           className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-100"
         >
-          Download material CSV
+          Download component CSV
         </button>
         <button
           type="button"
@@ -404,7 +404,7 @@ export default function ItemCsvTools({ onImported }: ItemCsvToolsProps) {
             }}
             disabled={importing}
           >
-            <option value="material">material</option>
+            <option value="component">component</option>
             <option value="assembly">assembly</option>
           </select>
         </label>

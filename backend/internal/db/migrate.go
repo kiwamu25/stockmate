@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS items (
   series_id INTEGER,
   sku TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
-  item_type TEXT NOT NULL CHECK (item_type IN ('material','assembly')),
+  item_type TEXT NOT NULL CHECK (item_type IN ('component','assembly')),
   stock_managed INTEGER NOT NULL DEFAULT 1 CHECK (stock_managed IN (0,1)),
   is_sellable INTEGER NOT NULL DEFAULT 0 CHECK (is_sellable IN (0,1)),
   is_final INTEGER NOT NULL DEFAULT 0 CHECK (is_final IN (0,1)),
@@ -48,12 +48,12 @@ BEGIN
 END;
 `
 
-const createMaterials = `
-CREATE TABLE IF NOT EXISTS materials (
-  material_id INTEGER PRIMARY KEY AUTOINCREMENT,
+const createComponents = `
+CREATE TABLE IF NOT EXISTS components (
+  component_id INTEGER PRIMARY KEY AUTOINCREMENT,
   item_id INTEGER NOT NULL UNIQUE,
   manufacturer TEXT,
-  material_type TEXT,
+  component_type TEXT NOT NULL DEFAULT 'material' CHECK (component_type IN ('part','material')),
   color TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (item_id) REFERENCES items(item_id) ON DELETE CASCADE
@@ -87,26 +87,6 @@ CREATE TABLE IF NOT EXISTS stock_transactions (
 
 const createIdxStockTransactionsItem = `
 CREATE INDEX IF NOT EXISTS idx_st_item ON stock_transactions(item_id);
-`
-
-const dropLegacyRecipeTrigger = `
-DROP TRIGGER IF EXISTS trg_recipes_updated_at;
-`
-
-const dropLegacyRecipeInputs = `
-DROP TABLE IF EXISTS recipe_inputs;
-`
-
-const dropLegacyRecipeOutputs = `
-DROP TABLE IF EXISTS recipe_outputs;
-`
-
-const dropLegacyRecipes = `
-DROP TABLE IF EXISTS recipes;
-`
-
-const dropLegacyAssemblyComponents = `
-DROP TABLE IF EXISTS assembly_components;
 `
 
 const createAssemblyRecords = `
@@ -150,15 +130,10 @@ func Migrate(db *sql.DB) error {
 		{"create items", createItems},
 		{"trigger items.updated_at", triggerItemsUpdatedAt},
 		{"index items(series_id)", createIdxItemsSeries},
-		{"create materials", createMaterials},
+		{"create components", createComponents},
 		{"create assemblies", createAssemblies},
 		{"create stock_transactions", createStockTransactions},
 		{"index stock_transactions(item_id)", createIdxStockTransactionsItem},
-		{"drop legacy recipe trigger", dropLegacyRecipeTrigger},
-		{"drop legacy recipe_inputs", dropLegacyRecipeInputs},
-		{"drop legacy recipe_outputs", dropLegacyRecipeOutputs},
-		{"drop legacy recipes", dropLegacyRecipes},
-		{"drop legacy assembly_components", dropLegacyAssemblyComponents},
 		{"create assembly_records", createAssemblyRecords},
 		{"index assembly_records(item_id)", createIdxAssemblyRecordsItem},
 		{"create assembly_components", createAssemblyComponents},

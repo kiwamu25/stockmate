@@ -14,23 +14,23 @@ import (
 )
 
 type Item struct {
-	ID             int64           `json:"id"`
-	SeriesID       *int64          `json:"series_id,omitempty"`
-	SKU            string          `json:"sku"`
-	Name           string          `json:"name"`
-	ItemType       string          `json:"item_type"`
-	PackQty        *float64        `json:"pack_qty,omitempty"`
-	ManagedUnit    string          `json:"managed_unit"`
-	RevCode        string          `json:"rev_code,omitempty"`
-	StockManaged   bool            `json:"stock_managed"`
-	IsSellable     bool            `json:"is_sellable"`
-	IsFinal        bool            `json:"is_final"`
-	OutputCategory string          `json:"output_category,omitempty"`
-	Note           string          `json:"note,omitempty"`
-	CreatedAt      string          `json:"created_at,omitempty"`
-	UpdatedAt      string          `json:"updated_at,omitempty"`
-	Assembly       *AssemblyDetail `json:"assembly,omitempty"`
-	Material       *MaterialDetail `json:"material,omitempty"`
+	ID             int64            `json:"id"`
+	SeriesID       *int64           `json:"series_id,omitempty"`
+	SKU            string           `json:"sku"`
+	Name           string           `json:"name"`
+	ItemType       string           `json:"item_type"`
+	PackQty        *float64         `json:"pack_qty,omitempty"`
+	ManagedUnit    string           `json:"managed_unit"`
+	RevCode        string           `json:"rev_code,omitempty"`
+	StockManaged   bool             `json:"stock_managed"`
+	IsSellable     bool             `json:"is_sellable"`
+	IsFinal        bool             `json:"is_final"`
+	OutputCategory string           `json:"output_category,omitempty"`
+	Note           string           `json:"note,omitempty"`
+	CreatedAt      string           `json:"created_at,omitempty"`
+	UpdatedAt      string           `json:"updated_at,omitempty"`
+	Assembly       *AssemblyDetail  `json:"assembly,omitempty"`
+	Component      *ComponentDetail `json:"component,omitempty"`
 }
 
 type AssemblyDetail struct {
@@ -40,10 +40,10 @@ type AssemblyDetail struct {
 	Note         string   `json:"note,omitempty"`
 }
 
-type MaterialDetail struct {
-	Manufacturer string `json:"manufacturer,omitempty"`
-	MaterialType string `json:"material_type,omitempty"`
-	Color        string `json:"color,omitempty"`
+type ComponentDetail struct {
+	Manufacturer  string `json:"manufacturer,omitempty"`
+	ComponentType string `json:"component_type,omitempty"`
+	Color         string `json:"color,omitempty"`
 }
 
 type AssemblyComponent struct {
@@ -141,8 +141,8 @@ func parseItemType(value string) (string, error) {
 	if itemType == "" {
 		itemType = "assembly"
 	}
-	if itemType != "material" && itemType != "assembly" {
-		return "", fmt.Errorf("item_type must be material or assembly")
+	if itemType != "component" && itemType != "assembly" {
+		return "", fmt.Errorf("item_type must be component or assembly")
 	}
 	return itemType, nil
 }
@@ -154,28 +154,28 @@ func createItem(dbx *sql.DB) http.HandlerFunc {
 		PackSize     string   `json:"pack_size"`
 		Note         string   `json:"note"`
 	}
-	type MaterialReq struct {
-		Manufacturer string `json:"manufacturer"`
-		MaterialType string `json:"material_type"`
-		Color        string `json:"color"`
+	type ComponentReq struct {
+		Manufacturer  string `json:"manufacturer"`
+		ComponentType string `json:"component_type"`
+		Color         string `json:"color"`
 	}
 
 	type Req struct {
-		SeriesID       *int64       `json:"series_id"`
-		SKU            string       `json:"sku"`
-		Name           string       `json:"name"`
-		ItemType       string       `json:"item_type"`
-		ManagedUnit    string       `json:"managed_unit"`
-		BaseUnit       string       `json:"base_unit"`
-		PackQty        *float64     `json:"pack_qty"`
-		RevCode        string       `json:"rev_code"`
-		StockManaged   *bool        `json:"stock_managed"`
-		IsSellable     bool         `json:"is_sellable"`
-		IsFinal        bool         `json:"is_final"`
-		OutputCategory string       `json:"output_category"`
-		Note           string       `json:"note"`
-		Assembly       *AssemblyReq `json:"assembly"`
-		Material       *MaterialReq `json:"material"`
+		SeriesID       *int64        `json:"series_id"`
+		SKU            string        `json:"sku"`
+		Name           string        `json:"name"`
+		ItemType       string        `json:"item_type"`
+		ManagedUnit    string        `json:"managed_unit"`
+		BaseUnit       string        `json:"base_unit"`
+		PackQty        *float64      `json:"pack_qty"`
+		RevCode        string        `json:"rev_code"`
+		StockManaged   *bool         `json:"stock_managed"`
+		IsSellable     bool          `json:"is_sellable"`
+		IsFinal        bool          `json:"is_final"`
+		OutputCategory string        `json:"output_category"`
+		Note           string        `json:"note"`
+		Assembly       *AssemblyReq  `json:"assembly"`
+		Component      *ComponentReq `json:"component"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -285,19 +285,26 @@ VALUES(?,?,?,?,?)
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-		case "material":
+		case "component":
 			manufacturer := ""
-			materialType := ""
+			componentType := "material"
 			color := ""
-			if req.Material != nil {
-				manufacturer = strings.TrimSpace(req.Material.Manufacturer)
-				materialType = strings.TrimSpace(req.Material.MaterialType)
-				color = strings.TrimSpace(req.Material.Color)
+			if req.Component != nil {
+				manufacturer = strings.TrimSpace(req.Component.Manufacturer)
+				componentType = strings.TrimSpace(req.Component.ComponentType)
+				color = strings.TrimSpace(req.Component.Color)
+			}
+			if componentType == "" {
+				componentType = "material"
+			}
+			if componentType != "part" && componentType != "material" {
+				http.Error(w, "component.component_type must be part or material", http.StatusBadRequest)
+				return
 			}
 			if _, err := tx.Exec(`
-INSERT INTO materials(item_id, manufacturer, material_type, color)
+INSERT INTO components(item_id, manufacturer, component_type, color)
 VALUES(?,?,?,?)
-`, id, manufacturer, materialType, color); err != nil {
+`, id, manufacturer, componentType, color); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
@@ -350,12 +357,12 @@ SELECT
   a.total_weight,
   a.pack_size,
   a.note,
-  m.manufacturer,
-  m.material_type,
-  m.color
+  c.manufacturer,
+  c.component_type,
+  c.color
 FROM items i
 LEFT JOIN assemblies a ON a.item_id = i.item_id
-LEFT JOIN materials m ON m.item_id = i.item_id
+LEFT JOIN components c ON c.item_id = i.item_id
 ORDER BY i.item_id DESC
 LIMIT 200
 `)
@@ -383,9 +390,9 @@ LIMIT 200
 			var assemblyTotalWeight sql.NullFloat64
 			var assemblyPackSize sql.NullString
 			var assemblyNote sql.NullString
-			var materialManufacturer sql.NullString
-			var materialType sql.NullString
-			var materialColor sql.NullString
+			var componentManufacturer sql.NullString
+			var componentType sql.NullString
+			var componentColor sql.NullString
 			var sm int
 			var sellable int
 			var final int
@@ -409,9 +416,9 @@ LIMIT 200
 				&assemblyTotalWeight,
 				&assemblyPackSize,
 				&assemblyNote,
-				&materialManufacturer,
-				&materialType,
-				&materialColor,
+				&componentManufacturer,
+				&componentType,
+				&componentColor,
 			); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -462,11 +469,11 @@ LIMIT 200
 					it.Assembly.TotalWeight = &tw
 				}
 			}
-			if materialManufacturer.Valid || materialType.Valid || materialColor.Valid {
-				it.Material = &MaterialDetail{
-					Manufacturer: materialManufacturer.String,
-					MaterialType: materialType.String,
-					Color:        materialColor.String,
+			if componentManufacturer.Valid || componentType.Valid || componentColor.Valid {
+				it.Component = &ComponentDetail{
+					Manufacturer:  componentManufacturer.String,
+					ComponentType: componentType.String,
+					Color:         componentColor.String,
 				}
 			}
 			it.StockManaged = (sm != 0)
@@ -690,24 +697,24 @@ func updateItem(dbx *sql.DB) http.HandlerFunc {
 		PackSize     string   `json:"pack_size"`
 		Note         string   `json:"note"`
 	}
-	type MaterialReq struct {
-		Manufacturer string `json:"manufacturer"`
-		MaterialType string `json:"material_type"`
-		Color        string `json:"color"`
+	type ComponentReq struct {
+		Manufacturer  string `json:"manufacturer"`
+		ComponentType string `json:"component_type"`
+		Color         string `json:"color"`
 	}
 	type Req struct {
-		SKU            string       `json:"sku"`
-		Name           string       `json:"name"`
-		ManagedUnit    string       `json:"managed_unit"`
-		PackQty        *float64     `json:"pack_qty"`
-		RevCode        string       `json:"rev_code"`
-		StockManaged   bool         `json:"stock_managed"`
-		IsSellable     bool         `json:"is_sellable"`
-		IsFinal        bool         `json:"is_final"`
-		OutputCategory string       `json:"output_category"`
-		Note           string       `json:"note"`
-		Assembly       *AssemblyReq `json:"assembly"`
-		Material       *MaterialReq `json:"material"`
+		SKU            string        `json:"sku"`
+		Name           string        `json:"name"`
+		ManagedUnit    string        `json:"managed_unit"`
+		PackQty        *float64      `json:"pack_qty"`
+		RevCode        string        `json:"rev_code"`
+		StockManaged   bool          `json:"stock_managed"`
+		IsSellable     bool          `json:"is_sellable"`
+		IsFinal        bool          `json:"is_final"`
+		OutputCategory string        `json:"output_category"`
+		Note           string        `json:"note"`
+		Assembly       *AssemblyReq  `json:"assembly"`
+		Component      *ComponentReq `json:"component"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -816,23 +823,30 @@ ON CONFLICT(item_id) DO UPDATE SET
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-		case "material":
+		case "component":
 			manufacturer := ""
-			materialType := ""
+			componentType := "material"
 			color := ""
-			if req.Material != nil {
-				manufacturer = strings.TrimSpace(req.Material.Manufacturer)
-				materialType = strings.TrimSpace(req.Material.MaterialType)
-				color = strings.TrimSpace(req.Material.Color)
+			if req.Component != nil {
+				manufacturer = strings.TrimSpace(req.Component.Manufacturer)
+				componentType = strings.TrimSpace(req.Component.ComponentType)
+				color = strings.TrimSpace(req.Component.Color)
+			}
+			if componentType == "" {
+				componentType = "material"
+			}
+			if componentType != "part" && componentType != "material" {
+				http.Error(w, "component.component_type must be part or material", http.StatusBadRequest)
+				return
 			}
 			if _, err := tx.Exec(`
-INSERT INTO materials(item_id, manufacturer, material_type, color)
+INSERT INTO components(item_id, manufacturer, component_type, color)
 VALUES(?,?,?,?)
 ON CONFLICT(item_id) DO UPDATE SET
   manufacturer = excluded.manufacturer,
-  material_type = excluded.material_type,
+  component_type = excluded.component_type,
   color = excluded.color
-`, itemID, manufacturer, materialType, color); err != nil {
+`, itemID, manufacturer, componentType, color); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}

@@ -5,7 +5,7 @@ type AssemblyComponent = {
   component_item_id: number;
   sku: string;
   name: string;
-  item_type: "material" | "assembly";
+  item_type: "component" | "assembly";
   managed_unit: Item["managed_unit"];
   qty_per_unit: number;
   note?: string;

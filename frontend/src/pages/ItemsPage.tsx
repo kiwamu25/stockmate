@@ -21,9 +21,9 @@ type EditForm = {
   assembly_total_weight: string;
   assembly_pack_size: string;
   assembly_note: string;
-  material_manufacturer: string;
-  material_type: string;
-  material_color: string;
+  component_manufacturer: string;
+  component_type: string;
+  component_color: string;
 };
 
 export default function ItemsPage({ items, error }: ItemsPageProps) {
@@ -47,9 +47,9 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
     assembly_total_weight: "",
     assembly_pack_size: "",
     assembly_note: "",
-    material_manufacturer: "",
-    material_type: "",
-    material_color: "",
+    component_manufacturer: "",
+    component_type: "",
+    component_color: "",
   });
 
   useEffect(() => {
@@ -83,9 +83,9 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
       assembly_total_weight: item.assembly?.total_weight?.toString() ?? "",
       assembly_pack_size: item.assembly?.pack_size ?? "",
       assembly_note: item.assembly?.note ?? "",
-      material_manufacturer: item.material?.manufacturer ?? "",
-      material_type: item.material?.material_type ?? "",
-      material_color: item.material?.color ?? "",
+      component_manufacturer: item.component?.manufacturer ?? "",
+      component_type: item.component?.component_type ?? "material",
+      component_color: item.component?.color ?? "",
     });
     setSaveError("");
     setEditing(true);
@@ -137,11 +137,11 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
         pack_size: editForm.assembly_pack_size.trim(),
         note: editForm.assembly_note.trim(),
       };
-    } else if (selectedItem.item_type === "material") {
-      payload.material = {
-        manufacturer: editForm.material_manufacturer.trim(),
-        material_type: editForm.material_type.trim(),
-        color: editForm.material_color.trim(),
+    } else if (selectedItem.item_type === "component") {
+      payload.component = {
+        manufacturer: editForm.component_manufacturer.trim(),
+        component_type: editForm.component_type.trim(),
+        color: editForm.component_color.trim(),
       };
     }
 
@@ -179,14 +179,14 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                     note: editForm.assembly_note.trim() || undefined,
                   }
                 : item.assembly,
-            material:
-              item.item_type === "material"
+            component:
+              item.item_type === "component"
                 ? {
-                    manufacturer: editForm.material_manufacturer.trim() || undefined,
-                    material_type: editForm.material_type.trim() || undefined,
-                    color: editForm.material_color.trim() || undefined,
+                    manufacturer: editForm.component_manufacturer.trim() || undefined,
+                    component_type: editForm.component_type.trim() || undefined,
+                    color: editForm.component_color.trim() || undefined,
                   }
-                : item.material,
+                : item.component,
           };
         }),
       );
@@ -200,72 +200,73 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-10 md:px-6">
-      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
-          <h1 className="text-xl font-black text-gray-900">Items</h1>
-          <p className="mt-1 text-xs text-gray-500">Click a row to open detail editor.</p>
+      <div className="2xl:grid 2xl:grid-cols-[minmax(0,1fr)_460px] 2xl:items-start 2xl:gap-5">
+        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+          <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
+            <h1 className="text-xl font-black text-gray-900">Items</h1>
+            <p className="mt-1 text-xs text-gray-500">Click a row to open detail editor.</p>
+          </div>
+
+          {error && (
+            <div className="mx-6 mt-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          {localItems.length === 0 ? (
+            <p className="px-6 py-8 text-gray-500">No items yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-gray-100 text-left text-xs uppercase tracking-wider text-gray-600">
+                    <th className="p-3">ID</th>
+                    <th className="p-3">SKU</th>
+                    <th className="p-3">Name</th>
+                    <th className="p-3">Type</th>
+                    <th className="p-3">Unit</th>
+                    <th className="p-3">Sellable</th>
+                    <th className="p-3">Final</th>
+                    <th className="p-3">Managed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {localItems.map((item) => (
+                    <tr
+                      key={item.id}
+                      onClick={() => selectItem(item.id)}
+                      className={`cursor-pointer border-b border-gray-100 ${
+                        selectedId === item.id ? "bg-amber-50" : "hover:bg-gray-50"
+                      }`}
+                    >
+                      <td className="p-3 text-sm text-gray-700">{item.id}</td>
+                      <td className="p-3 font-mono text-sm text-gray-900">{item.sku}</td>
+                      <td className="p-3 text-sm text-gray-900">{item.name}</td>
+                      <td className="p-3 text-sm capitalize text-gray-700">{item.item_type}</td>
+                      <td className="p-3 text-sm text-gray-700">{item.managed_unit}</td>
+                      <td className="p-3 text-sm text-gray-700">{item.is_sellable ? "Yes" : "No"}</td>
+                      <td className="p-3 text-sm text-gray-700">{item.is_final ? "Yes" : "No"}</td>
+                      <td className="p-3 text-sm">
+                        {item.stock_managed ? (
+                          <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700">
+                            Yes
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-gray-100 px-2 py-1 text-gray-500">
+                            No
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
-        {error && (
-          <div className="mx-6 mt-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-
-        {localItems.length === 0 ? (
-          <p className="px-6 py-8 text-gray-500">No items yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-gray-100 text-left text-xs uppercase tracking-wider text-gray-600">
-                  <th className="p-3">ID</th>
-                  <th className="p-3">SKU</th>
-                  <th className="p-3">Name</th>
-                  <th className="p-3">Type</th>
-                  <th className="p-3">Unit</th>
-                  <th className="p-3">Sellable</th>
-                  <th className="p-3">Final</th>
-                  <th className="p-3">Managed</th>
-                </tr>
-              </thead>
-              <tbody>
-                {localItems.map((item) => (
-                  <tr
-                    key={item.id}
-                    onClick={() => selectItem(item.id)}
-                    className={`cursor-pointer border-b border-gray-100 ${
-                      selectedId === item.id ? "bg-amber-50" : "hover:bg-gray-50"
-                    }`}
-                  >
-                    <td className="p-3 text-sm text-gray-700">{item.id}</td>
-                    <td className="p-3 font-mono text-sm text-gray-900">{item.sku}</td>
-                    <td className="p-3 text-sm text-gray-900">{item.name}</td>
-                    <td className="p-3 text-sm capitalize text-gray-700">{item.item_type}</td>
-                    <td className="p-3 text-sm text-gray-700">{item.managed_unit}</td>
-                    <td className="p-3 text-sm text-gray-700">{item.is_sellable ? "Yes" : "No"}</td>
-                    <td className="p-3 text-sm text-gray-700">{item.is_final ? "Yes" : "No"}</td>
-                    <td className="p-3 text-sm">
-                      {item.stock_managed ? (
-                        <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700">
-                          Yes
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-gray-100 px-2 py-1 text-gray-500">
-                          No
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {selectedItem && (
-        <section className="mt-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        {selectedItem && (
+          <section className="mt-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm 2xl:sticky 2xl:top-24 2xl:mt-0">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold text-gray-900">Item Detail</h2>
@@ -436,41 +437,45 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
             </div>
           )}
 
-          {selectedItem.item_type === "material" && (
+          {selectedItem.item_type === "component" && (
             <div className="mt-4 grid gap-3 border-t border-gray-100 pt-4 text-sm text-gray-700 md:grid-cols-3">
               <label className="font-medium">
                 Manufacturer
                 <input
                   disabled={!editing}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                  value={editing ? editForm.material_manufacturer : selectedItem.material?.manufacturer ?? ""}
+                  value={editing ? editForm.component_manufacturer : selectedItem.component?.manufacturer ?? ""}
                   onChange={(e) =>
-                    setEditForm((f) => ({ ...f, material_manufacturer: e.target.value }))
+                    setEditForm((f) => ({ ...f, component_manufacturer: e.target.value }))
                   }
                 />
               </label>
               <label className="font-medium">
-                Material Type
-                <input
+                Component Type
+                <select
                   disabled={!editing}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                  value={editing ? editForm.material_type : selectedItem.material?.material_type ?? ""}
-                  onChange={(e) => setEditForm((f) => ({ ...f, material_type: e.target.value }))}
-                />
+                  value={editing ? editForm.component_type : selectedItem.component?.component_type ?? "material"}
+                  onChange={(e) => setEditForm((f) => ({ ...f, component_type: e.target.value }))}
+                >
+                  <option value="material">material</option>
+                  <option value="part">part</option>
+                </select>
               </label>
               <label className="font-medium">
                 Color
                 <input
                   disabled={!editing}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                  value={editing ? editForm.material_color : selectedItem.material?.color ?? ""}
-                  onChange={(e) => setEditForm((f) => ({ ...f, material_color: e.target.value }))}
+                  value={editing ? editForm.component_color : selectedItem.component?.color ?? ""}
+                  onChange={(e) => setEditForm((f) => ({ ...f, component_color: e.target.value }))}
                 />
               </label>
             </div>
           )}
-        </section>
-      )}
+          </section>
+        )}
+      </div>
     </main>
   );
 }

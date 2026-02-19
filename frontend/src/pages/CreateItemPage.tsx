@@ -28,9 +28,9 @@ export default function CreateItemPage() {
     pack_size: "",
     note: "",
   });
-  const [materialForm, setMaterialForm] = useState({
+  const [componentForm, setComponentForm] = useState({
     manufacturer: "",
-    material_type: "",
+    component_type: "material",
     color: "",
   });
 
@@ -54,9 +54,9 @@ export default function CreateItemPage() {
       pack_size: "",
       note: "",
     });
-    setMaterialForm({
+    setComponentForm({
       manufacturer: "",
-      material_type: "",
+      component_type: "material",
       color: "",
     });
   }
@@ -138,11 +138,11 @@ export default function CreateItemPage() {
           pack_size: assemblyForm.pack_size.trim(),
           note: assemblyForm.note.trim(),
         };
-      } else if (form.item_type === "material") {
-        payload.material = {
-          manufacturer: materialForm.manufacturer.trim(),
-          material_type: materialForm.material_type.trim(),
-          color: materialForm.color.trim(),
+      } else if (form.item_type === "component") {
+        payload.component = {
+          manufacturer: componentForm.manufacturer.trim(),
+          component_type: componentForm.component_type.trim(),
+          color: componentForm.color.trim(),
         };
       }
 
@@ -183,10 +183,10 @@ export default function CreateItemPage() {
       pack_size: item.assembly?.pack_size ?? "",
       note: item.assembly?.note ?? "",
     });
-    setMaterialForm({
-      manufacturer: item.material?.manufacturer ?? "",
-      material_type: item.material?.material_type ?? "",
-      color: item.material?.color ?? "",
+    setComponentForm({
+      manufacturer: item.component?.manufacturer ?? "",
+      component_type: item.component?.component_type ?? "material",
+      color: item.component?.color ?? "",
     });
   }
 
@@ -234,7 +234,7 @@ export default function CreateItemPage() {
                 value={form.item_type}
                 onChange={(e) => resetFormsByType(e.target.value as Item["item_type"])}
               >
-                <option value="material">material</option>
+                <option value="component">component</option>
                 <option value="assembly">assembly</option>
               </select>
             </label>
@@ -346,36 +346,38 @@ export default function CreateItemPage() {
               </>
             )}
 
-            {form.item_type === "material" && (
+            {form.item_type === "component" && (
               <>
                 <label className="text-sm font-medium text-gray-700">
-                  Material Manufacturer
+                  Component Manufacturer
                   <input
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                    value={materialForm.manufacturer}
+                    value={componentForm.manufacturer}
                     onChange={(e) =>
-                      setMaterialForm((f) => ({ ...f, manufacturer: e.target.value }))
+                      setComponentForm((f) => ({ ...f, manufacturer: e.target.value }))
                     }
                     placeholder="Bambu Lab"
                   />
                 </label>
                 <label className="text-sm font-medium text-gray-700">
-                  Material Type
-                  <input
+                  Component Type
+                  <select
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                    value={materialForm.material_type}
+                    value={componentForm.component_type}
                     onChange={(e) =>
-                      setMaterialForm((f) => ({ ...f, material_type: e.target.value }))
+                      setComponentForm((f) => ({ ...f, component_type: e.target.value }))
                     }
-                    placeholder="PLA / TPU / ASA"
-                  />
+                  >
+                    <option value="material">material</option>
+                    <option value="part">part</option>
+                  </select>
                 </label>
                 <label className="text-sm font-medium text-gray-700 md:col-span-2">
                   Color
                   <input
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                    value={materialForm.color}
-                    onChange={(e) => setMaterialForm((f) => ({ ...f, color: e.target.value }))}
+                    value={componentForm.color}
+                    onChange={(e) => setComponentForm((f) => ({ ...f, color: e.target.value }))}
                     placeholder="Black"
                   />
                 </label>

@@ -3,7 +3,7 @@ export type Item = {
   series_id?: number;
   sku: string;
   name: string;
-  item_type: "material" | "assembly";
+  item_type: "component" | "assembly";
   pack_qty?: number;
   managed_unit: "g" | "pcs";
   rev_code?: string;
@@ -20,9 +20,9 @@ export type Item = {
     pack_size?: string;
     note?: string;
   };
-  material?: {
+  component?: {
     manufacturer?: string;
-    material_type?: string;
+    component_type?: string;
     color?: string;
   };
 };

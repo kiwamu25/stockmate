@@ -63,7 +63,7 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
   const [message, setMessage] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [searchType, setSearchType] = useState<Item["item_type"]>("material");
+  const [searchType, setSearchType] = useState<Item["item_type"]>("component");
   const [keyword, setKeyword] = useState("");
   const [searched, setSearched] = useState(false);
   const [results, setResults] = useState<Item[]>([]);
@@ -120,7 +120,7 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
     setSearched(false);
     setResults([]);
     setKeyword("");
-    setSearchType("material");
+    setSearchType("component");
   }
 
   function runSearch() {
@@ -281,7 +281,7 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
           Component Combination
         </h1>
         <p className="mt-2 text-sm text-gray-700 md:text-base">
-          アセンブリに対して material / assembly を組み合わせて登録します。
+          アセンブリに対して component / assembly を組み合わせて登録します。
         </p>
       </div>
 
@@ -466,7 +466,7 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
                   value={searchType}
                   onChange={(e) => setSearchType(e.target.value as Item["item_type"])}
                 >
-                  <option value="material">material</option>
+                  <option value="component">component</option>
                   <option value="assembly">assembly</option>
                 </select>
               </label>
