@@ -12,14 +12,18 @@ export default function CreateItemPage() {
   const [form, setForm] = useState({
     sku: "",
     name: "",
-    category: "product" as Item["category"],
+    item_type: "assembly" as Item["item_type"],
     managed_unit: "pcs" as Item["managed_unit"],
     pack_qty: "",
     rev_code: "",
     stock_managed: true,
+    is_sellable: false,
+    is_final: false,
+    output_category: "",
     note: "",
   });
-  const [productForm, setProductForm] = useState({
+  const [assemblyForm, setAssemblyForm] = useState({
+    manufacturer: "",
     total_weight: "",
     pack_size: "",
     note: "",
@@ -29,23 +33,23 @@ export default function CreateItemPage() {
     material_type: "",
     color: "",
   });
-  const [partForm, setPartForm] = useState({
-    manufacturer: "",
-    note: "",
-  });
 
-  function resetFormsByCategory(category: Item["category"]) {
+  function resetFormsByType(itemType: Item["item_type"]) {
     setForm({
       sku: "",
       name: "",
-      category,
+      item_type: itemType,
       managed_unit: "pcs",
       pack_qty: "",
       rev_code: "",
       stock_managed: true,
+      is_sellable: false,
+      is_final: false,
+      output_category: "",
       note: "",
     });
-    setProductForm({
+    setAssemblyForm({
+      manufacturer: "",
       total_weight: "",
       pack_size: "",
       note: "",
@@ -54,10 +58,6 @@ export default function CreateItemPage() {
       manufacturer: "",
       material_type: "",
       color: "",
-    });
-    setPartForm({
-      manufacturer: "",
-      note: "",
     });
   }
 
@@ -78,8 +78,8 @@ export default function CreateItemPage() {
   }, [loadHistoryItems]);
 
   const filteredHistory = useMemo(
-    () => historyItems.filter((item) => item.category === form.category).slice(0, 8),
-    [historyItems, form.category],
+    () => historyItems.filter((item) => item.item_type === form.item_type).slice(0, 8),
+    [historyItems, form.item_type],
   );
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -90,9 +90,9 @@ export default function CreateItemPage() {
     const name = form.name.trim();
     const packQtyText = form.pack_qty.trim();
     const packQty = packQtyText === "" ? null : Number(packQtyText);
-    const productTotalWeightText = productForm.total_weight.trim();
-    const productTotalWeight =
-      productTotalWeightText === "" ? null : Number(productTotalWeightText);
+    const assemblyTotalWeightText = assemblyForm.total_weight.trim();
+    const assemblyTotalWeight =
+      assemblyTotalWeightText === "" ? null : Number(assemblyTotalWeightText);
     if (!sku || !name) {
       setError("SKU and Name are required.");
       return;
@@ -105,13 +105,13 @@ export default function CreateItemPage() {
       return;
     }
     if (
-      form.category === "product" &&
-      productTotalWeightText !== "" &&
-      (productTotalWeight === null ||
-        !Number.isFinite(productTotalWeight) ||
-        productTotalWeight <= 0)
+      form.item_type === "assembly" &&
+      assemblyTotalWeightText !== "" &&
+      (assemblyTotalWeight === null ||
+        !Number.isFinite(assemblyTotalWeight) ||
+        assemblyTotalWeight <= 0)
     ) {
-      setError("Total Weight must be a positive number.");
+      setError("Assembly Total Weight must be a positive number.");
       return;
     }
 
@@ -120,30 +120,29 @@ export default function CreateItemPage() {
       const payload: Record<string, unknown> = {
         sku,
         name,
-        category: form.category,
+        item_type: form.item_type,
         managed_unit: form.managed_unit,
         pack_qty: packQty,
         rev_code: form.rev_code.trim(),
         stock_managed: form.stock_managed,
+        is_sellable: form.is_sellable,
+        is_final: form.is_final,
+        output_category: form.output_category.trim(),
         note: form.note.trim(),
       };
 
-      if (form.category === "product") {
-        payload.product = {
-          total_weight: productTotalWeight,
-          pack_size: productForm.pack_size.trim(),
-          note: productForm.note.trim(),
+      if (form.item_type === "assembly") {
+        payload.assembly = {
+          manufacturer: assemblyForm.manufacturer.trim(),
+          total_weight: assemblyTotalWeight,
+          pack_size: assemblyForm.pack_size.trim(),
+          note: assemblyForm.note.trim(),
         };
-      } else if (form.category === "material") {
+      } else if (form.item_type === "material") {
         payload.material = {
           manufacturer: materialForm.manufacturer.trim(),
           material_type: materialForm.material_type.trim(),
           color: materialForm.color.trim(),
-        };
-      } else if (form.category === "part") {
-        payload.part = {
-          manufacturer: partForm.manufacturer.trim(),
-          note: partForm.note.trim(),
         };
       }
 
@@ -167,253 +166,266 @@ export default function CreateItemPage() {
       ...f,
       sku: item.sku,
       name: item.name,
-      category: item.category,
+      item_type: item.item_type,
       managed_unit: item.managed_unit,
       pack_qty: item.pack_qty?.toString() ?? "",
       rev_code: item.rev_code ?? "",
       stock_managed: item.stock_managed,
+      is_sellable: item.is_sellable,
+      is_final: item.is_final,
+      output_category: item.output_category ?? "",
       note: item.note ?? "",
     }));
 
-    setProductForm({
-      total_weight: item.product?.total_weight?.toString() ?? "",
-      pack_size: item.product?.pack_size ?? "",
-      note: item.product?.note ?? "",
+    setAssemblyForm({
+      manufacturer: item.assembly?.manufacturer ?? "",
+      total_weight: item.assembly?.total_weight?.toString() ?? "",
+      pack_size: item.assembly?.pack_size ?? "",
+      note: item.assembly?.note ?? "",
     });
     setMaterialForm({
       manufacturer: item.material?.manufacturer ?? "",
       material_type: item.material?.material_type ?? "",
       color: item.material?.color ?? "",
     });
-    setPartForm({
-      manufacturer: item.part?.manufacturer ?? "",
-      note: item.part?.note ?? "",
-    });
   }
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-10 md:px-6">
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-black text-gray-900">Create Item</h1>
-        <p className="mt-2 text-sm text-gray-600">
-          Add an inventory item with category and base unit.
-        </p>
-        <ItemCsvTools onImported={loadHistoryItems} />
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+          <h1 className="text-2xl font-black text-gray-900">Create Item</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            Add an inventory item with item type and stock settings.
+          </p>
+          <ItemCsvTools onImported={loadHistoryItems} />
 
-        {error && (
-          <div className="mt-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">
-            {error}
-          </div>
-        )}
+          {error && (
+            <div className="mt-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">
+              {error}
+            </div>
+          )}
 
-        <form onSubmit={onSubmit} className="mt-5 grid gap-4 md:grid-cols-2">
-          <label className="text-sm font-medium text-gray-700">
-            SKU
-            <input
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-              value={form.sku}
-              onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
-              placeholder="ITEM-001"
-            />
-          </label>
+          <form onSubmit={onSubmit} className="mt-5 grid gap-4 md:grid-cols-2">
+            <label className="text-sm font-medium text-gray-700">
+              SKU
+              <input
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                value={form.sku}
+                onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
+                placeholder="ITEM-001"
+              />
+            </label>
 
-          <label className="text-sm font-medium text-gray-700">
-            Name
-            <input
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-              value={form.name}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder="Sample Item"
-            />
-          </label>
+            <label className="text-sm font-medium text-gray-700">
+              Name
+              <input
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="Sample Item"
+              />
+            </label>
 
-          <label className="text-sm font-medium text-gray-700">
-            Category
-            <select
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-              value={form.category}
-              onChange={(e) => resetFormsByCategory(e.target.value as Item["category"])}
+            <label className="text-sm font-medium text-gray-700">
+              Item Type
+              <select
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                value={form.item_type}
+                onChange={(e) => resetFormsByType(e.target.value as Item["item_type"])}
+              >
+                <option value="material">material</option>
+                <option value="assembly">assembly</option>
+              </select>
+            </label>
+
+            <label className="text-sm font-medium text-gray-700">
+              Managed Unit
+              <select
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                value={form.managed_unit}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, managed_unit: e.target.value as Item["managed_unit"] }))
+                }
+              >
+                <option value="pcs">pcs</option>
+                <option value="g">g</option>
+              </select>
+            </label>
+
+            <label className="text-sm font-medium text-gray-700">
+              Pack Qty
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                value={form.pack_qty}
+                onChange={(e) => setForm((f) => ({ ...f, pack_qty: e.target.value }))}
+                placeholder="initial stock quantity if applicable"
+              />
+            </label>
+
+            <label className="text-sm font-medium text-gray-700">
+              Output Category
+              <input
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                value={form.output_category}
+                onChange={(e) => setForm((f) => ({ ...f, output_category: e.target.value }))}
+                placeholder="shipment category"
+              />
+            </label>
+
+            <label className="text-sm font-medium text-gray-700 md:col-span-2">
+              Rev Code
+              <input
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                value={form.rev_code}
+                onChange={(e) => setForm((f) => ({ ...f, rev_code: e.target.value }))}
+                placeholder="A / B / C"
+              />
+            </label>
+
+            <label className="text-sm font-medium text-gray-700 md:col-span-2">
+              Note
+              <input
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                value={form.note}
+                onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
+                placeholder="optional"
+              />
+            </label>
+
+            {form.item_type === "assembly" && (
+              <>
+                <label className="text-sm font-medium text-gray-700">
+                  Assembly Manufacturer
+                  <input
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                    value={assemblyForm.manufacturer}
+                    onChange={(e) =>
+                      setAssemblyForm((f) => ({ ...f, manufacturer: e.target.value }))
+                    }
+                    placeholder="Maker name"
+                  />
+                </label>
+                <label className="text-sm font-medium text-gray-700">
+                  Assembly Total Weight (g)
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                    value={assemblyForm.total_weight}
+                    onChange={(e) =>
+                      setAssemblyForm((f) => ({ ...f, total_weight: e.target.value }))
+                    }
+                    placeholder="optional"
+                  />
+                </label>
+                <label className="text-sm font-medium text-gray-700">
+                  Pack Size
+                  <input
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                    value={assemblyForm.pack_size}
+                    onChange={(e) =>
+                      setAssemblyForm((f) => ({ ...f, pack_size: e.target.value }))
+                    }
+                    placeholder="w x d x h cm"
+                  />
+                </label>
+                <label className="text-sm font-medium text-gray-700 md:col-span-2">
+                  Assembly Note
+                  <input
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                    value={assemblyForm.note}
+                    onChange={(e) => setAssemblyForm((f) => ({ ...f, note: e.target.value }))}
+                    placeholder="optional"
+                  />
+                </label>
+              </>
+            )}
+
+            {form.item_type === "material" && (
+              <>
+                <label className="text-sm font-medium text-gray-700">
+                  Material Manufacturer
+                  <input
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                    value={materialForm.manufacturer}
+                    onChange={(e) =>
+                      setMaterialForm((f) => ({ ...f, manufacturer: e.target.value }))
+                    }
+                    placeholder="Bambu Lab"
+                  />
+                </label>
+                <label className="text-sm font-medium text-gray-700">
+                  Material Type
+                  <input
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                    value={materialForm.material_type}
+                    onChange={(e) =>
+                      setMaterialForm((f) => ({ ...f, material_type: e.target.value }))
+                    }
+                    placeholder="PLA / TPU / ASA"
+                  />
+                </label>
+                <label className="text-sm font-medium text-gray-700 md:col-span-2">
+                  Color
+                  <input
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                    value={materialForm.color}
+                    onChange={(e) => setMaterialForm((f) => ({ ...f, color: e.target.value }))}
+                    placeholder="Black"
+                  />
+                </label>
+              </>
+            )}
+
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={form.stock_managed}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, stock_managed: e.target.checked }))
+                }
+              />
+              Stock managed
+            </label>
+
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={form.is_sellable}
+                onChange={(e) => setForm((f) => ({ ...f, is_sellable: e.target.checked }))}
+              />
+              Sellable
+            </label>
+
+            <label className="flex items-center gap-2 text-sm text-gray-700 md:col-span-2">
+              <input
+                type="checkbox"
+                checked={form.is_final}
+                onChange={(e) => setForm((f) => ({ ...f, is_final: e.target.checked }))}
+              />
+              Final item
+            </label>
+
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-full bg-gray-900 px-5 py-2 font-bold text-white transition hover:bg-black disabled:opacity-50 md:col-span-2"
             >
-              <option value="material">material</option>
-              <option value="part">part</option>
-              <option value="product">product</option>
-            </select>
-          </label>
-
-          <label className="text-sm font-medium text-gray-700">
-            Managed Unit
-            <select
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-              value={form.managed_unit}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, managed_unit: e.target.value as Item["managed_unit"] }))
-              }
-            >
-              <option value="pcs">pcs</option>
-              <option value="g">g</option>
-            </select>
-          </label>
-
-          <label className="text-sm font-medium text-gray-700">
-            Pack Qty
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-              value={form.pack_qty}
-              onChange={(e) => setForm((f) => ({ ...f, pack_qty: e.target.value }))}
-              placeholder="initial stock quantity if applicable"
-            />
-          </label>
-
-          <label className="text-sm font-medium text-gray-700 md:col-span-2">
-            Rev Code
-            <input
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-              value={form.rev_code}
-              onChange={(e) => setForm((f) => ({ ...f, rev_code: e.target.value }))}
-              placeholder="A / B / C"
-            />
-          </label>
-
-          <label className="text-sm font-medium text-gray-700 md:col-span-2">
-            Note
-            <input
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-              value={form.note}
-              onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
-              placeholder="optional"
-            />
-          </label>
-
-          {form.category === "product" && (
-            <>
-              <label className="text-sm font-medium text-gray-700">
-                Product Total Weight (g)
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                  value={productForm.total_weight}
-                  onChange={(e) =>
-                    setProductForm((f) => ({ ...f, total_weight: e.target.value }))
-                  }
-                  placeholder="optional"
-                />
-              </label>
-              <label className="text-sm font-medium text-gray-700">
-                Pack Size
-                <input
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                  value={productForm.pack_size}
-                  onChange={(e) =>
-                    setProductForm((f) => ({ ...f, pack_size: e.target.value }))
-                  }
-                  placeholder="w x d x h cm"
-                />
-              </label>
-              <label className="text-sm font-medium text-gray-700 md:col-span-2">
-                Product Note
-                <input
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                  value={productForm.note}
-                  onChange={(e) => setProductForm((f) => ({ ...f, note: e.target.value }))}
-                  placeholder="optional"
-                />
-              </label>
-            </>
-          )}
-
-          {form.category === "material" && (
-            <>
-              <label className="text-sm font-medium text-gray-700">
-                Material Manufacturer
-                <input
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                  value={materialForm.manufacturer}
-                  onChange={(e) =>
-                    setMaterialForm((f) => ({ ...f, manufacturer: e.target.value }))
-                  }
-                  placeholder="Bambu Lab"
-                />
-              </label>
-              <label className="text-sm font-medium text-gray-700">
-                Material Type
-                <input
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                  value={materialForm.material_type}
-                  onChange={(e) =>
-                    setMaterialForm((f) => ({ ...f, material_type: e.target.value }))
-                  }
-                  placeholder="PLA / TPU / ASA"
-                />
-              </label>
-              <label className="text-sm font-medium text-gray-700 md:col-span-2">
-                Color
-                <input
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                  value={materialForm.color}
-                  onChange={(e) => setMaterialForm((f) => ({ ...f, color: e.target.value }))}
-                  placeholder="Black"
-                />
-              </label>
-            </>
-          )}
-
-          {form.category === "part" && (
-            <>
-              <label className="text-sm font-medium text-gray-700">
-                Part Manufacturer
-                <input
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                  value={partForm.manufacturer}
-                  onChange={(e) =>
-                    setPartForm((f) => ({ ...f, manufacturer: e.target.value }))
-                  }
-                  placeholder="Maker name"
-                />
-              </label>
-              <label className="text-sm font-medium text-gray-700 md:col-span-2">
-                Part Note
-                <input
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                  value={partForm.note}
-                  onChange={(e) => setPartForm((f) => ({ ...f, note: e.target.value }))}
-                  placeholder="optional"
-                />
-              </label>
-            </>
-          )}
-
-          <label className="flex items-center gap-2 text-sm text-gray-700 md:col-span-2">
-            <input
-              type="checkbox"
-              checked={form.stock_managed}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, stock_managed: e.target.checked }))
-              }
-            />
-            Stock managed
-          </label>
-
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded-full bg-gray-900 px-5 py-2 font-bold text-white transition hover:bg-black disabled:opacity-50 md:col-span-2"
-          >
-            {saving ? "Saving..." : "Create Item"}
-          </button>
-        </form>
-      </div>
+              {saving ? "Saving..." : "Create Item"}
+            </button>
+          </form>
+        </div>
         <section className="self-start rounded-2xl border border-gray-200 bg-white p-5 shadow-sm lg:sticky lg:top-24">
           <h2 className="text-base font-bold text-gray-900">
-            Recent {form.category} Items
+            Recent {form.item_type} Items
           </h2>
           <p className="mt-1 text-xs text-gray-500">
-            Showing latest registrations for the selected category.
+            Showing latest registrations for the selected item type.
           </p>
 
           {historyError && (
@@ -423,7 +435,7 @@ export default function CreateItemPage() {
           )}
 
           {!historyError && filteredHistory.length === 0 && (
-            <p className="mt-3 text-sm text-gray-500">No history for this category yet.</p>
+            <p className="mt-3 text-sm text-gray-500">No history for this item type yet.</p>
           )}
 
           {filteredHistory.length > 0 && (

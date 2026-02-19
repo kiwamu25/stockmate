@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import Nav from "./components/Nav";
+import AssemblyBuilderPage from "./pages/AssemblyBuilderPage";
 import CreateItemPage from "./pages/CreateItemPage";
 import HomePage from "./pages/HomePage";
 import ItemsPage from "./pages/ItemsPage";
@@ -27,6 +28,7 @@ export default function App() {
         <Route path="/" element={<HomePage items={items} />} />
         <Route path="/items" element={<ItemsPage items={items} error={error} />} />
         <Route path="/items/new" element={<CreateItemPage />} />
+        <Route path="/assemblies/builder" element={<AssemblyBuilderPage items={items} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>

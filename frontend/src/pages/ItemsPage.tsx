@@ -14,14 +14,16 @@ type EditForm = {
   rev_code: string;
   note: string;
   stock_managed: boolean;
-  product_total_weight: string;
-  product_pack_size: string;
-  product_note: string;
+  is_sellable: boolean;
+  is_final: boolean;
+  output_category: string;
+  assembly_manufacturer: string;
+  assembly_total_weight: string;
+  assembly_pack_size: string;
+  assembly_note: string;
   material_manufacturer: string;
   material_type: string;
   material_color: string;
-  part_manufacturer: string;
-  part_note: string;
 };
 
 export default function ItemsPage({ items, error }: ItemsPageProps) {
@@ -38,14 +40,16 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
     rev_code: "",
     note: "",
     stock_managed: true,
-    product_total_weight: "",
-    product_pack_size: "",
-    product_note: "",
+    is_sellable: false,
+    is_final: false,
+    output_category: "",
+    assembly_manufacturer: "",
+    assembly_total_weight: "",
+    assembly_pack_size: "",
+    assembly_note: "",
     material_manufacturer: "",
     material_type: "",
     material_color: "",
-    part_manufacturer: "",
-    part_note: "",
   });
 
   useEffect(() => {
@@ -72,14 +76,16 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
       rev_code: item.rev_code ?? "",
       note: item.note ?? "",
       stock_managed: item.stock_managed,
-      product_total_weight: item.product?.total_weight?.toString() ?? "",
-      product_pack_size: item.product?.pack_size ?? "",
-      product_note: item.product?.note ?? "",
+      is_sellable: item.is_sellable,
+      is_final: item.is_final,
+      output_category: item.output_category ?? "",
+      assembly_manufacturer: item.assembly?.manufacturer ?? "",
+      assembly_total_weight: item.assembly?.total_weight?.toString() ?? "",
+      assembly_pack_size: item.assembly?.pack_size ?? "",
+      assembly_note: item.assembly?.note ?? "",
       material_manufacturer: item.material?.manufacturer ?? "",
       material_type: item.material?.material_type ?? "",
       material_color: item.material?.color ?? "",
-      part_manufacturer: item.part?.manufacturer ?? "",
-      part_note: item.part?.note ?? "",
     });
     setSaveError("");
     setEditing(true);
@@ -100,14 +106,14 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
       setSaveError("Pack Qty must be a positive number.");
       return;
     }
-    const totalWeightText = editForm.product_total_weight.trim();
+    const totalWeightText = editForm.assembly_total_weight.trim();
     const totalWeight = totalWeightText === "" ? null : Number(totalWeightText);
     if (
-      selectedItem.category === "product" &&
+      selectedItem.item_type === "assembly" &&
       totalWeightText !== "" &&
       (!Number.isFinite(totalWeight) || Number(totalWeight) <= 0)
     ) {
-      setSaveError("Product Total Weight must be a positive number.");
+      setSaveError("Assembly Total Weight must be a positive number.");
       return;
     }
 
@@ -118,24 +124,24 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
       pack_qty: packQty,
       rev_code: editForm.rev_code.trim(),
       stock_managed: editForm.stock_managed,
+      is_sellable: editForm.is_sellable,
+      is_final: editForm.is_final,
+      output_category: editForm.output_category.trim(),
       note: editForm.note.trim(),
     };
-    if (selectedItem.category === "product") {
-      payload.product = {
+
+    if (selectedItem.item_type === "assembly") {
+      payload.assembly = {
+        manufacturer: editForm.assembly_manufacturer.trim(),
         total_weight: totalWeight,
-        pack_size: editForm.product_pack_size.trim(),
-        note: editForm.product_note.trim(),
+        pack_size: editForm.assembly_pack_size.trim(),
+        note: editForm.assembly_note.trim(),
       };
-    } else if (selectedItem.category === "material") {
+    } else if (selectedItem.item_type === "material") {
       payload.material = {
         manufacturer: editForm.material_manufacturer.trim(),
         material_type: editForm.material_type.trim(),
         color: editForm.material_color.trim(),
-      };
-    } else if (selectedItem.category === "part") {
-      payload.part = {
-        manufacturer: editForm.part_manufacturer.trim(),
-        note: editForm.part_note.trim(),
       };
     }
 
@@ -161,29 +167,26 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
             rev_code: editForm.rev_code.trim() || undefined,
             note: editForm.note.trim() || undefined,
             stock_managed: editForm.stock_managed,
-            product:
-              item.category === "product"
+            is_sellable: editForm.is_sellable,
+            is_final: editForm.is_final,
+            output_category: editForm.output_category.trim() || undefined,
+            assembly:
+              item.item_type === "assembly"
                 ? {
+                    manufacturer: editForm.assembly_manufacturer.trim() || undefined,
                     total_weight: totalWeight ?? undefined,
-                    pack_size: editForm.product_pack_size.trim() || undefined,
-                    note: editForm.product_note.trim() || undefined,
+                    pack_size: editForm.assembly_pack_size.trim() || undefined,
+                    note: editForm.assembly_note.trim() || undefined,
                   }
-                : item.product,
+                : item.assembly,
             material:
-              item.category === "material"
+              item.item_type === "material"
                 ? {
                     manufacturer: editForm.material_manufacturer.trim() || undefined,
                     material_type: editForm.material_type.trim() || undefined,
                     color: editForm.material_color.trim() || undefined,
                   }
                 : item.material,
-            part:
-              item.category === "part"
-                ? {
-                    manufacturer: editForm.part_manufacturer.trim() || undefined,
-                    note: editForm.part_note.trim() || undefined,
-                  }
-                : item.part,
           };
         }),
       );
@@ -219,9 +222,10 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                   <th className="p-3">ID</th>
                   <th className="p-3">SKU</th>
                   <th className="p-3">Name</th>
-                  <th className="p-3">Category</th>
+                  <th className="p-3">Type</th>
                   <th className="p-3">Unit</th>
-                  <th className="p-3">Rev</th>
+                  <th className="p-3">Sellable</th>
+                  <th className="p-3">Final</th>
                   <th className="p-3">Managed</th>
                 </tr>
               </thead>
@@ -237,9 +241,10 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                     <td className="p-3 text-sm text-gray-700">{item.id}</td>
                     <td className="p-3 font-mono text-sm text-gray-900">{item.sku}</td>
                     <td className="p-3 text-sm text-gray-900">{item.name}</td>
-                    <td className="p-3 text-sm capitalize text-gray-700">{item.category}</td>
+                    <td className="p-3 text-sm capitalize text-gray-700">{item.item_type}</td>
                     <td className="p-3 text-sm text-gray-700">{item.managed_unit}</td>
-                    <td className="p-3 text-sm text-gray-700">{item.rev_code || "-"}</td>
+                    <td className="p-3 text-sm text-gray-700">{item.is_sellable ? "Yes" : "No"}</td>
+                    <td className="p-3 text-sm text-gray-700">{item.is_final ? "Yes" : "No"}</td>
                     <td className="p-3 text-sm">
                       {item.stock_managed ? (
                         <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700">
@@ -304,6 +309,14 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
               />
             </label>
             <label className="font-medium">
+              Item Type
+              <input
+                disabled
+                className="mt-1 w-full rounded-lg border border-gray-300 bg-gray-100 px-3 py-2"
+                value={selectedItem.item_type}
+              />
+            </label>
+            <label className="font-medium">
               Managed Unit
               <select
                 disabled={!editing}
@@ -335,6 +348,15 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                 onChange={(e) => setEditForm((f) => ({ ...f, rev_code: e.target.value }))}
               />
             </label>
+            <label className="font-medium">
+              Output Category
+              <input
+                disabled={!editing}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+                value={editing ? editForm.output_category : selectedItem.output_category ?? ""}
+                onChange={(e) => setEditForm((f) => ({ ...f, output_category: e.target.value }))}
+              />
+            </label>
             <label className="flex items-center gap-2 font-medium">
               <input
                 type="checkbox"
@@ -343,6 +365,24 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                 onChange={(e) => setEditForm((f) => ({ ...f, stock_managed: e.target.checked }))}
               />
               Stock managed
+            </label>
+            <label className="flex items-center gap-2 font-medium">
+              <input
+                type="checkbox"
+                disabled={!editing}
+                checked={editing ? editForm.is_sellable : selectedItem.is_sellable}
+                onChange={(e) => setEditForm((f) => ({ ...f, is_sellable: e.target.checked }))}
+              />
+              Sellable
+            </label>
+            <label className="flex items-center gap-2 font-medium">
+              <input
+                type="checkbox"
+                disabled={!editing}
+                checked={editing ? editForm.is_final : selectedItem.is_final}
+                onChange={(e) => setEditForm((f) => ({ ...f, is_final: e.target.checked }))}
+              />
+              Final item
             </label>
             <label className="font-medium md:col-span-2">
               Note
@@ -355,15 +395,24 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
             </label>
           </div>
 
-          {selectedItem.category === "product" && (
-            <div className="mt-4 grid gap-3 border-t border-gray-100 pt-4 text-sm text-gray-700 md:grid-cols-3">
+          {selectedItem.item_type === "assembly" && (
+            <div className="mt-4 grid gap-3 border-t border-gray-100 pt-4 text-sm text-gray-700 md:grid-cols-2">
+              <label className="font-medium">
+                Manufacturer
+                <input
+                  disabled={!editing}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+                  value={editing ? editForm.assembly_manufacturer : selectedItem.assembly?.manufacturer ?? ""}
+                  onChange={(e) => setEditForm((f) => ({ ...f, assembly_manufacturer: e.target.value }))}
+                />
+              </label>
               <label className="font-medium">
                 Total Weight
                 <input
                   disabled={!editing}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                  value={editing ? editForm.product_total_weight : selectedItem.product?.total_weight?.toString() ?? ""}
-                  onChange={(e) => setEditForm((f) => ({ ...f, product_total_weight: e.target.value }))}
+                  value={editing ? editForm.assembly_total_weight : selectedItem.assembly?.total_weight?.toString() ?? ""}
+                  onChange={(e) => setEditForm((f) => ({ ...f, assembly_total_weight: e.target.value }))}
                 />
               </label>
               <label className="font-medium">
@@ -371,23 +420,23 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                 <input
                   disabled={!editing}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                  value={editing ? editForm.product_pack_size : selectedItem.product?.pack_size ?? ""}
-                  onChange={(e) => setEditForm((f) => ({ ...f, product_pack_size: e.target.value }))}
+                  value={editing ? editForm.assembly_pack_size : selectedItem.assembly?.pack_size ?? ""}
+                  onChange={(e) => setEditForm((f) => ({ ...f, assembly_pack_size: e.target.value }))}
                 />
               </label>
-              <label className="font-medium">
-                Product Note
+              <label className="font-medium md:col-span-2">
+                Assembly Note
                 <input
                   disabled={!editing}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                  value={editing ? editForm.product_note : selectedItem.product?.note ?? ""}
-                  onChange={(e) => setEditForm((f) => ({ ...f, product_note: e.target.value }))}
+                  value={editing ? editForm.assembly_note : selectedItem.assembly?.note ?? ""}
+                  onChange={(e) => setEditForm((f) => ({ ...f, assembly_note: e.target.value }))}
                 />
               </label>
             </div>
           )}
 
-          {selectedItem.category === "material" && (
+          {selectedItem.item_type === "material" && (
             <div className="mt-4 grid gap-3 border-t border-gray-100 pt-4 text-sm text-gray-700 md:grid-cols-3">
               <label className="font-medium">
                 Manufacturer
@@ -416,29 +465,6 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
                   value={editing ? editForm.material_color : selectedItem.material?.color ?? ""}
                   onChange={(e) => setEditForm((f) => ({ ...f, material_color: e.target.value }))}
-                />
-              </label>
-            </div>
-          )}
-
-          {selectedItem.category === "part" && (
-            <div className="mt-4 grid gap-3 border-t border-gray-100 pt-4 text-sm text-gray-700 md:grid-cols-2">
-              <label className="font-medium">
-                Manufacturer
-                <input
-                  disabled={!editing}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                  value={editing ? editForm.part_manufacturer : selectedItem.part?.manufacturer ?? ""}
-                  onChange={(e) => setEditForm((f) => ({ ...f, part_manufacturer: e.target.value }))}
-                />
-              </label>
-              <label className="font-medium">
-                Part Note
-                <input
-                  disabled={!editing}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                  value={editing ? editForm.part_note : selectedItem.part?.note ?? ""}
-                  onChange={(e) => setEditForm((f) => ({ ...f, part_note: e.target.value }))}
                 />
               </label>
             </div>

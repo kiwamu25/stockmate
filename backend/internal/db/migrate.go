@@ -20,8 +20,11 @@ CREATE TABLE IF NOT EXISTS items (
   series_id INTEGER,
   sku TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
-  category TEXT NOT NULL CHECK (category IN ('material','part','product')),
+  item_type TEXT NOT NULL CHECK (item_type IN ('material','assembly')),
   stock_managed INTEGER NOT NULL DEFAULT 1 CHECK (stock_managed IN (0,1)),
+  is_sellable INTEGER NOT NULL DEFAULT 0 CHECK (is_sellable IN (0,1)),
+  is_final INTEGER NOT NULL DEFAULT 0 CHECK (is_final IN (0,1)),
+  output_category TEXT,
   pack_qty REAL,
   managed_unit TEXT NOT NULL CHECK (managed_unit IN ('g','pcs')),
   rev_code TEXT,
@@ -36,7 +39,6 @@ const createIdxItemsSeries = `
 CREATE INDEX IF NOT EXISTS idx_items_series ON items(series_id);
 `
 
-// updated_at 自動更新（SQLiteは ON UPDATE が無いのでトリガ）
 const triggerItemsUpdatedAt = `
 CREATE TRIGGER IF NOT EXISTS trg_items_updated_at
 AFTER UPDATE ON items
@@ -46,20 +48,8 @@ BEGIN
 END;
 `
 
-const createProducts = `
-CREATE TABLE IF NOT EXISTS products (
-  product_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  item_id INTEGER NOT NULL UNIQUE,
-  total_weight REAL,
-  pack_size TEXT,
-  note TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (item_id) REFERENCES items(item_id) ON DELETE CASCADE
-);
-`
-
-const createMaterial = `
-CREATE TABLE IF NOT EXISTS material (
+const createMaterials = `
+CREATE TABLE IF NOT EXISTS materials (
   material_id INTEGER PRIMARY KEY AUTOINCREMENT,
   item_id INTEGER NOT NULL UNIQUE,
   manufacturer TEXT,
@@ -70,11 +60,13 @@ CREATE TABLE IF NOT EXISTS material (
 );
 `
 
-const createParts = `
-CREATE TABLE IF NOT EXISTS parts (
-  part_id INTEGER PRIMARY KEY AUTOINCREMENT,
+const createAssemblies = `
+CREATE TABLE IF NOT EXISTS assemblies (
+  assembly_id INTEGER PRIMARY KEY AUTOINCREMENT,
   item_id INTEGER NOT NULL UNIQUE,
   manufacturer TEXT,
+  total_weight REAL,
+  pack_size TEXT,
   note TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (item_id) REFERENCES items(item_id) ON DELETE CASCADE
@@ -85,7 +77,7 @@ const createStockTransactions = `
 CREATE TABLE IF NOT EXISTS stock_transactions (
   transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
   item_id INTEGER NOT NULL,
-  qty REAL NOT NULL CHECK (qty > 0), -- gもpcsもここ。pcsは整数運用
+  qty REAL NOT NULL CHECK (qty > 0),
   transaction_type TEXT NOT NULL CHECK (transaction_type IN ('IN','OUT','ADJUST')),
   note TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -97,17 +89,55 @@ const createIdxStockTransactionsItem = `
 CREATE INDEX IF NOT EXISTS idx_st_item ON stock_transactions(item_id);
 `
 
-const createProductBOM = `
-CREATE TABLE IF NOT EXISTS product_bom (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  product_item_id INTEGER NOT NULL,
-  part_item_id INTEGER NOT NULL,
-  qty REAL NOT NULL CHECK (qty > 0),
+const createRecipes = `
+CREATE TABLE IF NOT EXISTS recipes (
+  recipe_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  process_type TEXT NOT NULL DEFAULT 'assembly' CHECK (process_type IN ('assembly','processing','mixing')),
+  note TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (product_item_id) REFERENCES items(item_id),
-  FOREIGN KEY (part_item_id) REFERENCES items(item_id),
-  UNIQUE (product_item_id, part_item_id)
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+`
+
+const triggerRecipesUpdatedAt = `
+CREATE TRIGGER IF NOT EXISTS trg_recipes_updated_at
+AFTER UPDATE ON recipes
+FOR EACH ROW
+BEGIN
+  UPDATE recipes SET updated_at = datetime('now') WHERE recipe_id = OLD.recipe_id;
+END;
+`
+
+const createRecipeInputs = `
+CREATE TABLE IF NOT EXISTS recipe_inputs (
+  recipe_id INTEGER NOT NULL,
+  item_id INTEGER NOT NULL,
+  qty_per_batch REAL NOT NULL CHECK (qty_per_batch > 0),
+  PRIMARY KEY (recipe_id, item_id),
+  FOREIGN KEY (recipe_id) REFERENCES recipes(recipe_id) ON DELETE CASCADE,
+  FOREIGN KEY (item_id) REFERENCES items(item_id)
+);
+`
+
+const createRecipeOutputs = `
+CREATE TABLE IF NOT EXISTS recipe_outputs (
+  recipe_id INTEGER NOT NULL,
+  item_id INTEGER NOT NULL,
+  qty_per_batch REAL NOT NULL CHECK (qty_per_batch > 0),
+  PRIMARY KEY (recipe_id, item_id),
+  FOREIGN KEY (recipe_id) REFERENCES recipes(recipe_id) ON DELETE CASCADE,
+  FOREIGN KEY (item_id) REFERENCES items(item_id)
+);
+`
+
+const createIdxRecipeInputsItem = `
+CREATE INDEX IF NOT EXISTS idx_recipe_inputs_item ON recipe_inputs(item_id);
+`
+
+const createIdxRecipeOutputsItem = `
+CREATE INDEX IF NOT EXISTS idx_recipe_outputs_item ON recipe_outputs(item_id);
 `
 
 func Migrate(db *sql.DB) error {
@@ -119,12 +149,17 @@ func Migrate(db *sql.DB) error {
 		{"create series", createSeries},
 		{"create items", createItems},
 		{"trigger items.updated_at", triggerItemsUpdatedAt},
-		{"create products", createProducts},
-		{"create material", createMaterial},
-		{"create parts", createParts},
+		{"index items(series_id)", createIdxItemsSeries},
+		{"create materials", createMaterials},
+		{"create assemblies", createAssemblies},
 		{"create stock_transactions", createStockTransactions},
 		{"index stock_transactions(item_id)", createIdxStockTransactionsItem},
-		{"create product_bom", createProductBOM},
+		{"create recipes", createRecipes},
+		{"trigger recipes.updated_at", triggerRecipesUpdatedAt},
+		{"create recipe_inputs", createRecipeInputs},
+		{"create recipe_outputs", createRecipeOutputs},
+		{"index recipe_inputs(item_id)", createIdxRecipeInputsItem},
+		{"index recipe_outputs(item_id)", createIdxRecipeOutputsItem},
 	}
 
 	for _, s := range stmts {
@@ -133,118 +168,5 @@ func Migrate(db *sql.DB) error {
 		}
 	}
 
-	// 既存DB互換: 旧itemsスキーマに必要列を後付けする
-	if err := ensureItemsColumns(db); err != nil {
-		return fmt.Errorf("migration failed at ensure items columns: %w", err)
-	}
-	if _, err := db.Exec(createIdxItemsSeries); err != nil {
-		return fmt.Errorf("migration failed at index items(series_id): %w", err)
-	}
-	// 既存データ互換: category別サブテーブル行を補完
-	if err := ensureCategorySubtableRows(db); err != nil {
-		return fmt.Errorf("migration failed at ensure category subtable rows: %w", err)
-	}
-
-	return nil
-}
-
-func ensureItemsColumns(db *sql.DB) error {
-	cols, err := getTableColumns(db, "items")
-	if err != nil {
-		return err
-	}
-
-	if _, ok := cols["series_id"]; !ok {
-		if _, err := db.Exec(`ALTER TABLE items ADD COLUMN series_id INTEGER REFERENCES series(series_id);`); err != nil {
-			return err
-		}
-	}
-	if _, ok := cols["pack_qty"]; !ok {
-		if _, err := db.Exec(`ALTER TABLE items ADD COLUMN pack_qty REAL;`); err != nil {
-			return err
-		}
-	}
-	if _, ok := cols["managed_unit"]; !ok {
-		if _, err := db.Exec(`ALTER TABLE items ADD COLUMN managed_unit TEXT NOT NULL DEFAULT 'pcs';`); err != nil {
-			return err
-		}
-	}
-	if _, ok := cols["rev_code"]; !ok {
-		if _, err := db.Exec(`ALTER TABLE items ADD COLUMN rev_code TEXT;`); err != nil {
-			return err
-		}
-	}
-
-	cols, err = getTableColumns(db, "items")
-	if err != nil {
-		return err
-	}
-	if _, hasBaseUnit := cols["base_unit"]; hasBaseUnit {
-		if _, err := db.Exec(`
-UPDATE items
-SET managed_unit = base_unit
-WHERE (managed_unit IS NULL OR managed_unit = '') AND base_unit IN ('g','pcs')
-`); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func getTableColumns(db *sql.DB, table string) (map[string]struct{}, error) {
-	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s);", table))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	out := make(map[string]struct{})
-	for rows.Next() {
-		var (
-			cid       int
-			name      string
-			typ       string
-			notnull   int
-			dfltValue sql.NullString
-			pk        int
-		)
-		if err := rows.Scan(&cid, &name, &typ, &notnull, &dfltValue, &pk); err != nil {
-			return nil, err
-		}
-		out[name] = struct{}{}
-	}
-	return out, rows.Err()
-}
-
-func ensureCategorySubtableRows(db *sql.DB) error {
-	stmts := []string{
-		`
-INSERT INTO products(item_id)
-SELECT i.item_id
-FROM items i
-LEFT JOIN products p ON p.item_id = i.item_id
-WHERE i.category = 'product' AND p.item_id IS NULL
-`,
-		`
-INSERT INTO material(item_id)
-SELECT i.item_id
-FROM items i
-LEFT JOIN material m ON m.item_id = i.item_id
-WHERE i.category = 'material' AND m.item_id IS NULL
-`,
-		`
-INSERT INTO parts(item_id)
-SELECT i.item_id
-FROM items i
-LEFT JOIN parts pt ON pt.item_id = i.item_id
-WHERE i.category = 'part' AND pt.item_id IS NULL
-`,
-	}
-
-	for _, q := range stmts {
-		if _, err := db.Exec(q); err != nil {
-			return err
-		}
-	}
 	return nil
 }

@@ -14,38 +14,36 @@ import (
 )
 
 type Item struct {
-	ID           int64           `json:"id"`
-	SeriesID     *int64          `json:"series_id,omitempty"`
-	SKU          string          `json:"sku"`
-	Name         string          `json:"name"`
-	Category     string          `json:"category"` // material / part / product
-	PackQty      *float64        `json:"pack_qty,omitempty"`
-	ManagedUnit  string          `json:"managed_unit"` // g / pcs
-	RevCode      string          `json:"rev_code,omitempty"`
-	StockManaged bool            `json:"stock_managed"` // true/false
-	Note         string          `json:"note,omitempty"`
-	CreatedAt    string          `json:"created_at,omitempty"`
-	UpdatedAt    string          `json:"updated_at,omitempty"`
-	Product      *ProductDetail  `json:"product,omitempty"`
-	Material     *MaterialDetail `json:"material,omitempty"`
-	Part         *PartDetail     `json:"part,omitempty"`
+	ID             int64           `json:"id"`
+	SeriesID       *int64          `json:"series_id,omitempty"`
+	SKU            string          `json:"sku"`
+	Name           string          `json:"name"`
+	ItemType       string          `json:"item_type"`
+	PackQty        *float64        `json:"pack_qty,omitempty"`
+	ManagedUnit    string          `json:"managed_unit"`
+	RevCode        string          `json:"rev_code,omitempty"`
+	StockManaged   bool            `json:"stock_managed"`
+	IsSellable     bool            `json:"is_sellable"`
+	IsFinal        bool            `json:"is_final"`
+	OutputCategory string          `json:"output_category,omitempty"`
+	Note           string          `json:"note,omitempty"`
+	CreatedAt      string          `json:"created_at,omitempty"`
+	UpdatedAt      string          `json:"updated_at,omitempty"`
+	Assembly       *AssemblyDetail `json:"assembly,omitempty"`
+	Material       *MaterialDetail `json:"material,omitempty"`
 }
 
-type ProductDetail struct {
-	TotalWeight *float64 `json:"total_weight,omitempty"`
-	PackSize    string   `json:"pack_size,omitempty"`
-	Note        string   `json:"note,omitempty"`
+type AssemblyDetail struct {
+	Manufacturer string   `json:"manufacturer,omitempty"`
+	TotalWeight  *float64 `json:"total_weight,omitempty"`
+	PackSize     string   `json:"pack_size,omitempty"`
+	Note         string   `json:"note,omitempty"`
 }
 
 type MaterialDetail struct {
 	Manufacturer string `json:"manufacturer,omitempty"`
 	MaterialType string `json:"material_type,omitempty"`
 	Color        string `json:"color,omitempty"`
-}
-
-type PartDetail struct {
-	Manufacturer string `json:"manufacturer,omitempty"`
-	Note         string `json:"note,omitempty"`
 }
 
 func main() {
@@ -82,7 +80,6 @@ func main() {
 		fmt.Fprintln(w, "ok")
 	})
 
-	// publicで事故りやすいので DEV の時だけ有効にする
 	if os.Getenv("APP_ENV") == "dev" {
 		r.Get("/debug/dsn", func(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintln(w, dsn)
@@ -99,36 +96,46 @@ func main() {
 	}
 }
 
+func parseItemType(value string) (string, error) {
+	itemType := strings.TrimSpace(value)
+	if itemType == "" {
+		itemType = "assembly"
+	}
+	if itemType != "material" && itemType != "assembly" {
+		return "", fmt.Errorf("item_type must be material or assembly")
+	}
+	return itemType, nil
+}
+
 func createItem(dbx *sql.DB) http.HandlerFunc {
-	type ProductReq struct {
-		TotalWeight *float64 `json:"total_weight"`
-		PackSize    string   `json:"pack_size"`
-		Note        string   `json:"note"`
+	type AssemblyReq struct {
+		Manufacturer string   `json:"manufacturer"`
+		TotalWeight  *float64 `json:"total_weight"`
+		PackSize     string   `json:"pack_size"`
+		Note         string   `json:"note"`
 	}
 	type MaterialReq struct {
 		Manufacturer string `json:"manufacturer"`
 		MaterialType string `json:"material_type"`
 		Color        string `json:"color"`
 	}
-	type PartReq struct {
-		Manufacturer string `json:"manufacturer"`
-		Note         string `json:"note"`
-	}
 
 	type Req struct {
-		SeriesID     *int64       `json:"series_id"`
-		SKU          string       `json:"sku"`
-		Name         string       `json:"name"`
-		Category     string       `json:"category"`     // material/part/product
-		ManagedUnit  string       `json:"managed_unit"` // g/pcs
-		BaseUnit     string       `json:"base_unit"`    // legacy alias
-		PackQty      *float64     `json:"pack_qty"`     // optional
-		RevCode      string       `json:"rev_code"`
-		StockManaged *bool        `json:"stock_managed"` // optional
-		Note         string       `json:"note"`
-		Product      *ProductReq  `json:"product"`
-		Material     *MaterialReq `json:"material"`
-		Part         *PartReq     `json:"part"`
+		SeriesID       *int64       `json:"series_id"`
+		SKU            string       `json:"sku"`
+		Name           string       `json:"name"`
+		ItemType       string       `json:"item_type"`
+		ManagedUnit    string       `json:"managed_unit"`
+		BaseUnit       string       `json:"base_unit"`
+		PackQty        *float64     `json:"pack_qty"`
+		RevCode        string       `json:"rev_code"`
+		StockManaged   *bool        `json:"stock_managed"`
+		IsSellable     bool         `json:"is_sellable"`
+		IsFinal        bool         `json:"is_final"`
+		OutputCategory string       `json:"output_category"`
+		Note           string       `json:"note"`
+		Assembly       *AssemblyReq `json:"assembly"`
+		Material       *MaterialReq `json:"material"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -142,22 +149,21 @@ func createItem(dbx *sql.DB) http.HandlerFunc {
 		req.Name = strings.TrimSpace(req.Name)
 		req.RevCode = strings.TrimSpace(req.RevCode)
 		req.Note = strings.TrimSpace(req.Note)
+		req.OutputCategory = strings.TrimSpace(req.OutputCategory)
 		if req.SKU == "" || req.Name == "" {
 			http.Error(w, "sku and name required", http.StatusBadRequest)
 			return
 		}
 
-		// defaults
-		if req.Category == "" {
-			req.Category = "product"
-		}
-		if req.Category != "material" && req.Category != "part" && req.Category != "product" {
-			http.Error(w, "category must be material, part, or product", http.StatusBadRequest)
+		itemType, err := parseItemType(req.ItemType)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		unit := req.ManagedUnit
+
+		unit := strings.TrimSpace(req.ManagedUnit)
 		if unit == "" {
-			unit = req.BaseUnit // backward compatibility
+			unit = strings.TrimSpace(req.BaseUnit)
 		}
 		if unit == "" {
 			unit = "pcs"
@@ -170,8 +176,8 @@ func createItem(dbx *sql.DB) http.HandlerFunc {
 			http.Error(w, "pack_qty must be > 0", http.StatusBadRequest)
 			return
 		}
-		if req.Product != nil && req.Product.TotalWeight != nil && *req.Product.TotalWeight <= 0 {
-			http.Error(w, "product.total_weight must be > 0", http.StatusBadRequest)
+		if req.Assembly != nil && req.Assembly.TotalWeight != nil && *req.Assembly.TotalWeight <= 0 {
+			http.Error(w, "assembly.total_weight must be > 0", http.StatusBadRequest)
 			return
 		}
 		stockManaged := true
@@ -179,10 +185,17 @@ func createItem(dbx *sql.DB) http.HandlerFunc {
 			stockManaged = *req.StockManaged
 		}
 
-		// bool -> 0/1 for sqlite
 		sm := 0
 		if stockManaged {
 			sm = 1
+		}
+		sellable := 0
+		if req.IsSellable {
+			sellable = 1
+		}
+		final := 0
+		if req.IsFinal {
+			final = 1
 		}
 
 		var seriesID any = nil
@@ -202,31 +215,33 @@ func createItem(dbx *sql.DB) http.HandlerFunc {
 		defer tx.Rollback()
 
 		res, err := tx.Exec(`
-INSERT INTO items(series_id, sku, name, category, stock_managed, pack_qty, managed_unit, rev_code, note)
-VALUES(?,?,?,?,?,?,?,?,?)
-`, seriesID, req.SKU, req.Name, req.Category, sm, packQty, unit, req.RevCode, req.Note)
+INSERT INTO items(series_id, sku, name, item_type, stock_managed, is_sellable, is_final, output_category, pack_qty, managed_unit, rev_code, note)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+`, seriesID, req.SKU, req.Name, itemType, sm, sellable, final, req.OutputCategory, packQty, unit, req.RevCode, req.Note)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		id, _ := res.LastInsertId()
-		switch req.Category {
-		case "product":
+		switch itemType {
+		case "assembly":
+			manufacturer := ""
 			var totalWeight any = nil
 			packSize := ""
-			productNote := ""
-			if req.Product != nil {
-				if req.Product.TotalWeight != nil {
-					totalWeight = *req.Product.TotalWeight
+			assemblyNote := ""
+			if req.Assembly != nil {
+				manufacturer = strings.TrimSpace(req.Assembly.Manufacturer)
+				if req.Assembly.TotalWeight != nil {
+					totalWeight = *req.Assembly.TotalWeight
 				}
-				packSize = strings.TrimSpace(req.Product.PackSize)
-				productNote = strings.TrimSpace(req.Product.Note)
+				packSize = strings.TrimSpace(req.Assembly.PackSize)
+				assemblyNote = strings.TrimSpace(req.Assembly.Note)
 			}
 			if _, err := tx.Exec(`
-INSERT INTO products(item_id, total_weight, pack_size, note)
-VALUES(?,?,?,?)
-`, id, totalWeight, packSize, productNote); err != nil {
+INSERT INTO assemblies(item_id, manufacturer, total_weight, pack_size, note)
+VALUES(?,?,?,?,?)
+`, id, manufacturer, totalWeight, packSize, assemblyNote); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
@@ -240,27 +255,14 @@ VALUES(?,?,?,?)
 				color = strings.TrimSpace(req.Material.Color)
 			}
 			if _, err := tx.Exec(`
-INSERT INTO material(item_id, manufacturer, material_type, color)
+INSERT INTO materials(item_id, manufacturer, material_type, color)
 VALUES(?,?,?,?)
 `, id, manufacturer, materialType, color); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-		case "part":
-			manufacturer := ""
-			partNote := ""
-			if req.Part != nil {
-				manufacturer = strings.TrimSpace(req.Part.Manufacturer)
-				partNote = strings.TrimSpace(req.Part.Note)
-			}
-			if _, err := tx.Exec(`
-INSERT INTO parts(item_id, manufacturer, note)
-VALUES(?,?,?)
-`, id, manufacturer, partNote); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
 		}
+
 		if err := tx.Commit(); err != nil {
 			http.Error(w, "failed to commit transaction", http.StatusInternalServerError)
 			return
@@ -268,16 +270,19 @@ VALUES(?,?,?)
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(Item{
-			ID:           id,
-			SeriesID:     req.SeriesID,
-			SKU:          req.SKU,
-			Name:         req.Name,
-			Category:     req.Category,
-			PackQty:      req.PackQty,
-			ManagedUnit:  unit,
-			RevCode:      req.RevCode,
-			StockManaged: stockManaged,
-			Note:         req.Note,
+			ID:             id,
+			SeriesID:       req.SeriesID,
+			SKU:            req.SKU,
+			Name:           req.Name,
+			ItemType:       itemType,
+			PackQty:        req.PackQty,
+			ManagedUnit:    unit,
+			RevCode:        req.RevCode,
+			StockManaged:   stockManaged,
+			IsSellable:     req.IsSellable,
+			IsFinal:        req.IsFinal,
+			OutputCategory: req.OutputCategory,
+			Note:           req.Note,
 		})
 	}
 }
@@ -290,26 +295,27 @@ SELECT
   i.series_id,
   i.sku,
   i.name,
-  i.category,
+  i.item_type,
   i.pack_qty,
   i.managed_unit,
   i.rev_code,
   i.stock_managed,
+  i.is_sellable,
+  i.is_final,
+  i.output_category,
   i.note,
   i.created_at,
   i.updated_at,
-  p.total_weight,
-  p.pack_size,
-  p.note,
+  a.manufacturer,
+  a.total_weight,
+  a.pack_size,
+  a.note,
   m.manufacturer,
   m.material_type,
-  m.color,
-  pt.manufacturer,
-  pt.note
+  m.color
 FROM items i
-LEFT JOIN products p ON p.item_id = i.item_id
-LEFT JOIN material m ON m.item_id = i.item_id
-LEFT JOIN parts pt ON pt.item_id = i.item_id
+LEFT JOIN assemblies a ON a.item_id = i.item_id
+LEFT JOIN materials m ON m.item_id = i.item_id
 ORDER BY i.item_id DESC
 LIMIT 200
 `)
@@ -325,43 +331,47 @@ LIMIT 200
 			var seriesID sql.NullInt64
 			var sku sql.NullString
 			var name sql.NullString
-			var category sql.NullString
+			var itemType sql.NullString
 			var packQty sql.NullFloat64
 			var managedUnit sql.NullString
 			var revCode sql.NullString
+			var outputCategory sql.NullString
 			var note sql.NullString
 			var createdAt sql.NullString
 			var updatedAt sql.NullString
-			var productTotalWeight sql.NullFloat64
-			var productPackSize sql.NullString
-			var productNote sql.NullString
+			var assemblyManufacturer sql.NullString
+			var assemblyTotalWeight sql.NullFloat64
+			var assemblyPackSize sql.NullString
+			var assemblyNote sql.NullString
 			var materialManufacturer sql.NullString
 			var materialType sql.NullString
 			var materialColor sql.NullString
-			var partManufacturer sql.NullString
-			var partNote sql.NullString
 			var sm int
+			var sellable int
+			var final int
 			if err := rows.Scan(
 				&it.ID,
 				&seriesID,
 				&sku,
 				&name,
-				&category,
+				&itemType,
 				&packQty,
 				&managedUnit,
 				&revCode,
 				&sm,
+				&sellable,
+				&final,
+				&outputCategory,
 				&note,
 				&createdAt,
 				&updatedAt,
-				&productTotalWeight,
-				&productPackSize,
-				&productNote,
+				&assemblyManufacturer,
+				&assemblyTotalWeight,
+				&assemblyPackSize,
+				&assemblyNote,
 				&materialManufacturer,
 				&materialType,
 				&materialColor,
-				&partManufacturer,
-				&partNote,
 			); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -376,8 +386,8 @@ LIMIT 200
 			if name.Valid {
 				it.Name = name.String
 			}
-			if category.Valid {
-				it.Category = category.String
+			if itemType.Valid {
+				it.ItemType = itemType.String
 			}
 			if packQty.Valid {
 				pq := packQty.Float64
@@ -389,6 +399,9 @@ LIMIT 200
 			if revCode.Valid {
 				it.RevCode = revCode.String
 			}
+			if outputCategory.Valid {
+				it.OutputCategory = outputCategory.String
+			}
 			if note.Valid {
 				it.Note = note.String
 			}
@@ -398,14 +411,15 @@ LIMIT 200
 			if updatedAt.Valid {
 				it.UpdatedAt = updatedAt.String
 			}
-			if productTotalWeight.Valid || productPackSize.Valid || productNote.Valid {
-				it.Product = &ProductDetail{
-					PackSize: productPackSize.String,
-					Note:     productNote.String,
+			if assemblyManufacturer.Valid || assemblyTotalWeight.Valid || assemblyPackSize.Valid || assemblyNote.Valid {
+				it.Assembly = &AssemblyDetail{
+					Manufacturer: assemblyManufacturer.String,
+					PackSize:     assemblyPackSize.String,
+					Note:         assemblyNote.String,
 				}
-				if productTotalWeight.Valid {
-					tw := productTotalWeight.Float64
-					it.Product.TotalWeight = &tw
+				if assemblyTotalWeight.Valid {
+					tw := assemblyTotalWeight.Float64
+					it.Assembly.TotalWeight = &tw
 				}
 			}
 			if materialManufacturer.Valid || materialType.Valid || materialColor.Valid {
@@ -415,13 +429,9 @@ LIMIT 200
 					Color:        materialColor.String,
 				}
 			}
-			if partManufacturer.Valid || partNote.Valid {
-				it.Part = &PartDetail{
-					Manufacturer: partManufacturer.String,
-					Note:         partNote.String,
-				}
-			}
 			it.StockManaged = (sm != 0)
+			it.IsSellable = (sellable != 0)
+			it.IsFinal = (final != 0)
 			out = append(out, it)
 		}
 
@@ -431,31 +441,30 @@ LIMIT 200
 }
 
 func updateItem(dbx *sql.DB) http.HandlerFunc {
-	type ProductReq struct {
-		TotalWeight *float64 `json:"total_weight"`
-		PackSize    string   `json:"pack_size"`
-		Note        string   `json:"note"`
+	type AssemblyReq struct {
+		Manufacturer string   `json:"manufacturer"`
+		TotalWeight  *float64 `json:"total_weight"`
+		PackSize     string   `json:"pack_size"`
+		Note         string   `json:"note"`
 	}
 	type MaterialReq struct {
 		Manufacturer string `json:"manufacturer"`
 		MaterialType string `json:"material_type"`
 		Color        string `json:"color"`
 	}
-	type PartReq struct {
-		Manufacturer string `json:"manufacturer"`
-		Note         string `json:"note"`
-	}
 	type Req struct {
-		SKU          string       `json:"sku"`
-		Name         string       `json:"name"`
-		ManagedUnit  string       `json:"managed_unit"`
-		PackQty      *float64     `json:"pack_qty"`
-		RevCode      string       `json:"rev_code"`
-		StockManaged bool         `json:"stock_managed"`
-		Note         string       `json:"note"`
-		Product      *ProductReq  `json:"product"`
-		Material     *MaterialReq `json:"material"`
-		Part         *PartReq     `json:"part"`
+		SKU            string       `json:"sku"`
+		Name           string       `json:"name"`
+		ManagedUnit    string       `json:"managed_unit"`
+		PackQty        *float64     `json:"pack_qty"`
+		RevCode        string       `json:"rev_code"`
+		StockManaged   bool         `json:"stock_managed"`
+		IsSellable     bool         `json:"is_sellable"`
+		IsFinal        bool         `json:"is_final"`
+		OutputCategory string       `json:"output_category"`
+		Note           string       `json:"note"`
+		Assembly       *AssemblyReq `json:"assembly"`
+		Material       *MaterialReq `json:"material"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -477,6 +486,7 @@ func updateItem(dbx *sql.DB) http.HandlerFunc {
 		req.ManagedUnit = strings.TrimSpace(req.ManagedUnit)
 		req.RevCode = strings.TrimSpace(req.RevCode)
 		req.Note = strings.TrimSpace(req.Note)
+		req.OutputCategory = strings.TrimSpace(req.OutputCategory)
 		if req.SKU == "" || req.Name == "" {
 			http.Error(w, "sku and name required", http.StatusBadRequest)
 			return
@@ -489,8 +499,8 @@ func updateItem(dbx *sql.DB) http.HandlerFunc {
 			http.Error(w, "pack_qty must be > 0", http.StatusBadRequest)
 			return
 		}
-		if req.Product != nil && req.Product.TotalWeight != nil && *req.Product.TotalWeight <= 0 {
-			http.Error(w, "product.total_weight must be > 0", http.StatusBadRequest)
+		if req.Assembly != nil && req.Assembly.TotalWeight != nil && *req.Assembly.TotalWeight <= 0 {
+			http.Error(w, "assembly.total_weight must be > 0", http.StatusBadRequest)
 			return
 		}
 
@@ -501,8 +511,8 @@ func updateItem(dbx *sql.DB) http.HandlerFunc {
 		}
 		defer tx.Rollback()
 
-		var category string
-		if err := tx.QueryRow(`SELECT category FROM items WHERE item_id = ?`, itemID).Scan(&category); err != nil {
+		var itemType string
+		if err := tx.QueryRow(`SELECT item_type FROM items WHERE item_id = ?`, itemID).Scan(&itemType); err != nil {
 			if err == sql.ErrNoRows {
 				http.Error(w, "item not found", http.StatusNotFound)
 				return
@@ -515,6 +525,14 @@ func updateItem(dbx *sql.DB) http.HandlerFunc {
 		if req.StockManaged {
 			sm = 1
 		}
+		sellable := 0
+		if req.IsSellable {
+			sellable = 1
+		}
+		final := 0
+		if req.IsFinal {
+			final = 1
+		}
 		var packQty any = nil
 		if req.PackQty != nil {
 			packQty = *req.PackQty
@@ -522,33 +540,36 @@ func updateItem(dbx *sql.DB) http.HandlerFunc {
 
 		if _, err := tx.Exec(`
 UPDATE items
-SET sku = ?, name = ?, stock_managed = ?, pack_qty = ?, managed_unit = ?, rev_code = ?, note = ?
+SET sku = ?, name = ?, stock_managed = ?, is_sellable = ?, is_final = ?, output_category = ?, pack_qty = ?, managed_unit = ?, rev_code = ?, note = ?
 WHERE item_id = ?
-`, req.SKU, req.Name, sm, packQty, req.ManagedUnit, req.RevCode, req.Note, itemID); err != nil {
+`, req.SKU, req.Name, sm, sellable, final, req.OutputCategory, packQty, req.ManagedUnit, req.RevCode, req.Note, itemID); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		switch category {
-		case "product":
+		switch itemType {
+		case "assembly":
+			manufacturer := ""
 			var totalWeight any = nil
 			packSize := ""
-			productNote := ""
-			if req.Product != nil {
-				if req.Product.TotalWeight != nil {
-					totalWeight = *req.Product.TotalWeight
+			assemblyNote := ""
+			if req.Assembly != nil {
+				manufacturer = strings.TrimSpace(req.Assembly.Manufacturer)
+				if req.Assembly.TotalWeight != nil {
+					totalWeight = *req.Assembly.TotalWeight
 				}
-				packSize = strings.TrimSpace(req.Product.PackSize)
-				productNote = strings.TrimSpace(req.Product.Note)
+				packSize = strings.TrimSpace(req.Assembly.PackSize)
+				assemblyNote = strings.TrimSpace(req.Assembly.Note)
 			}
 			if _, err := tx.Exec(`
-INSERT INTO products(item_id, total_weight, pack_size, note)
-VALUES(?,?,?,?)
+INSERT INTO assemblies(item_id, manufacturer, total_weight, pack_size, note)
+VALUES(?,?,?,?,?)
 ON CONFLICT(item_id) DO UPDATE SET
+  manufacturer = excluded.manufacturer,
   total_weight = excluded.total_weight,
   pack_size = excluded.pack_size,
   note = excluded.note
-`, itemID, totalWeight, packSize, productNote); err != nil {
+`, itemID, manufacturer, totalWeight, packSize, assemblyNote); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
@@ -562,30 +583,13 @@ ON CONFLICT(item_id) DO UPDATE SET
 				color = strings.TrimSpace(req.Material.Color)
 			}
 			if _, err := tx.Exec(`
-INSERT INTO material(item_id, manufacturer, material_type, color)
+INSERT INTO materials(item_id, manufacturer, material_type, color)
 VALUES(?,?,?,?)
 ON CONFLICT(item_id) DO UPDATE SET
   manufacturer = excluded.manufacturer,
   material_type = excluded.material_type,
   color = excluded.color
 `, itemID, manufacturer, materialType, color); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-		case "part":
-			manufacturer := ""
-			partNote := ""
-			if req.Part != nil {
-				manufacturer = strings.TrimSpace(req.Part.Manufacturer)
-				partNote = strings.TrimSpace(req.Part.Note)
-			}
-			if _, err := tx.Exec(`
-INSERT INTO parts(item_id, manufacturer, note)
-VALUES(?,?,?)
-ON CONFLICT(item_id) DO UPDATE SET
-  manufacturer = excluded.manufacturer,
-  note = excluded.note
-`, itemID, manufacturer, partNote); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}

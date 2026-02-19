@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Item } from "../types/item";
 
-type Category = Item["category"];
+type ItemType = Item["item_type"];
 type ManagedUnit = Item["managed_unit"];
 
 type ItemCsvToolsProps = {
@@ -25,7 +25,7 @@ function isDuplicateSkuError(message: string): boolean {
   );
 }
 
-const CATEGORY_HEADERS: Record<Category, string[]> = {
+const TYPE_HEADERS: Record<ItemType, string[]> = {
   material: [
     "sku",
     "name",
@@ -33,40 +33,64 @@ const CATEGORY_HEADERS: Record<Category, string[]> = {
     "pack_qty",
     "rev_code",
     "stock_managed",
+    "is_sellable",
+    "is_final",
+    "output_category",
     "note",
     "material_manufacturer",
     "material_type",
     "material_color",
   ],
-  part: [
+  assembly: [
     "sku",
     "name",
     "managed_unit",
     "pack_qty",
     "rev_code",
     "stock_managed",
+    "is_sellable",
+    "is_final",
+    "output_category",
     "note",
-    "part_manufacturer",
-    "part_note",
-  ],
-  product: [
-    "sku",
-    "name",
-    "managed_unit",
-    "pack_qty",
-    "rev_code",
-    "stock_managed",
-    "note",
-    "product_total_weight",
-    "product_pack_size",
-    "product_note",
+    "assembly_manufacturer",
+    "assembly_total_weight",
+    "assembly_pack_size",
+    "assembly_note",
   ],
 };
 
-const TEMPLATE_ROWS: Record<Category, string[]> = {
-  material: ["MAT-001", "PLA Black", "g", "1000", "A", "true", "", "Bambu Lab", "PLA", "Black"],
-  part: ["PART-001", "M3 Screw", "pcs", "100", "A", "true", "", "Any Supplier", ""],
-  product: ["PRD-001", "Phone Stand", "pcs", "10", "A", "true", "", "120", "10x8x12", ""],
+const TEMPLATE_ROWS: Record<ItemType, string[]> = {
+  material: [
+    "MAT-001",
+    "PLA Black",
+    "g",
+    "1000",
+    "A",
+    "true",
+    "false",
+    "false",
+    "",
+    "",
+    "Bambu Lab",
+    "PLA",
+    "Black",
+  ],
+  assembly: [
+    "ASM-001",
+    "Phone Stand",
+    "pcs",
+    "10",
+    "A",
+    "true",
+    "true",
+    "true",
+    "online",
+    "",
+    "In-house",
+    "120",
+    "10x8x12",
+    "",
+  ],
 };
 
 function csvEscape(value: string): string {
@@ -143,15 +167,15 @@ function parseManagedUnit(text: string): ManagedUnit {
   return unit;
 }
 
-function parseStockManaged(text: string): boolean {
+function parseBoolean(text: string, field: string, defaultValue: boolean): boolean {
   const value = text.trim().toLowerCase();
-  if (value === "") return true;
+  if (value === "") return defaultValue;
   if (["true", "1", "yes"].includes(value)) return true;
   if (["false", "0", "no"].includes(value)) return false;
-  throw new Error("stock_managed must be true/false (or 1/0).");
+  throw new Error(`${field} must be true/false (or 1/0).`);
 }
 
-function buildPayload(category: Category, rowMap: Record<string, string>): Record<string, unknown> {
+function buildPayload(itemType: ItemType, rowMap: Record<string, string>): Record<string, unknown> {
   const sku = (rowMap.sku ?? "").trim();
   const name = (rowMap.name ?? "").trim();
   if (!sku || !name) {
@@ -161,33 +185,32 @@ function buildPayload(category: Category, rowMap: Record<string, string>): Recor
   const payload: Record<string, unknown> = {
     sku,
     name,
-    category,
+    item_type: itemType,
     managed_unit: parseManagedUnit(rowMap.managed_unit ?? ""),
     pack_qty: parseOptionalPositiveNumber(rowMap.pack_qty ?? "", "pack_qty"),
     rev_code: (rowMap.rev_code ?? "").trim(),
-    stock_managed: parseStockManaged(rowMap.stock_managed ?? ""),
+    stock_managed: parseBoolean(rowMap.stock_managed ?? "", "stock_managed", true),
+    is_sellable: parseBoolean(rowMap.is_sellable ?? "", "is_sellable", false),
+    is_final: parseBoolean(rowMap.is_final ?? "", "is_final", false),
+    output_category: (rowMap.output_category ?? "").trim(),
     note: (rowMap.note ?? "").trim(),
   };
 
-  if (category === "product") {
-    payload.product = {
+  if (itemType === "assembly") {
+    payload.assembly = {
+      manufacturer: (rowMap.assembly_manufacturer ?? "").trim(),
       total_weight: parseOptionalPositiveNumber(
-        rowMap.product_total_weight ?? "",
-        "product_total_weight",
+        rowMap.assembly_total_weight ?? "",
+        "assembly_total_weight",
       ),
-      pack_size: (rowMap.product_pack_size ?? "").trim(),
-      note: (rowMap.product_note ?? "").trim(),
+      pack_size: (rowMap.assembly_pack_size ?? "").trim(),
+      note: (rowMap.assembly_note ?? "").trim(),
     };
-  } else if (category === "material") {
+  } else {
     payload.material = {
       manufacturer: (rowMap.material_manufacturer ?? "").trim(),
       material_type: (rowMap.material_type ?? "").trim(),
       color: (rowMap.material_color ?? "").trim(),
-    };
-  } else if (category === "part") {
-    payload.part = {
-      manufacturer: (rowMap.part_manufacturer ?? "").trim(),
-      note: (rowMap.part_note ?? "").trim(),
     };
   }
 
@@ -195,23 +218,23 @@ function buildPayload(category: Category, rowMap: Record<string, string>): Recor
 }
 
 export default function ItemCsvTools({ onImported }: ItemCsvToolsProps) {
-  const [category, setCategory] = useState<Category>("product");
+  const [itemType, setItemType] = useState<ItemType>("assembly");
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
   const [importSummary, setImportSummary] = useState("");
   const [previewName, setPreviewName] = useState("");
   const [previewRows, setPreviewRows] = useState<ParsedRow[]>([]);
 
-  function downloadTemplate(targetCategory: Category) {
-    const header = CATEGORY_HEADERS[targetCategory];
-    const sample = TEMPLATE_ROWS[targetCategory];
+  function downloadTemplate(targetType: ItemType) {
+    const header = TYPE_HEADERS[targetType];
+    const sample = TEMPLATE_ROWS[targetType];
     const content =
       `${header.map(csvEscape).join(",")}\n${sample.map(csvEscape).join(",")}\n`;
     const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `item-template-${targetCategory}.csv`;
+    link.download = `item-template-${targetType}.csv`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -236,7 +259,7 @@ export default function ItemCsvTools({ onImported }: ItemCsvToolsProps) {
       }
 
       const header = rows[0].map((h) => h.trim());
-      const requiredHeader = CATEGORY_HEADERS[category];
+      const requiredHeader = TYPE_HEADERS[itemType];
       const headerMissing = requiredHeader.filter((h) => !header.includes(h));
       if (headerMissing.length > 0) {
         throw new Error(`Missing required columns: ${headerMissing.join(", ")}`);
@@ -258,7 +281,7 @@ export default function ItemCsvTools({ onImported }: ItemCsvToolsProps) {
             line: rowIndex + 1,
             sku: (rowMap.sku ?? "").trim(),
             name: (rowMap.name ?? "").trim(),
-            payload: buildPayload(category, rowMap),
+            payload: buildPayload(itemType, rowMap),
             error: "",
           });
         } catch (rowError) {
@@ -346,7 +369,7 @@ export default function ItemCsvTools({ onImported }: ItemCsvToolsProps) {
     <section className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
       <h2 className="text-sm font-bold text-gray-900">CSV Template / Import</h2>
       <p className="mt-1 text-xs text-gray-600">
-        Download a category template, then import filled CSV with the same columns.
+        Download an item type template, then import filled CSV with the same columns.
       </p>
 
       <div className="mt-3 flex flex-wrap gap-2">
@@ -359,28 +382,21 @@ export default function ItemCsvTools({ onImported }: ItemCsvToolsProps) {
         </button>
         <button
           type="button"
-          onClick={() => downloadTemplate("part")}
+          onClick={() => downloadTemplate("assembly")}
           className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-100"
         >
-          Download part CSV
-        </button>
-        <button
-          type="button"
-          onClick={() => downloadTemplate("product")}
-          className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-100"
-        >
-          Download product CSV
+          Download assembly CSV
         </button>
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-[180px_minmax(0,1fr)] md:items-end">
         <label className="text-xs font-semibold text-gray-700">
-          Import Category
+          Import Item Type
           <select
             className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-            value={category}
+            value={itemType}
             onChange={(e) => {
-              setCategory(e.target.value as Category);
+              setItemType(e.target.value as ItemType);
               setPreviewRows([]);
               setPreviewName("");
               setImportSummary("");
@@ -389,8 +405,7 @@ export default function ItemCsvTools({ onImported }: ItemCsvToolsProps) {
             disabled={importing}
           >
             <option value="material">material</option>
-            <option value="part">part</option>
-            <option value="product">product</option>
+            <option value="assembly">assembly</option>
           </select>
         </label>
 

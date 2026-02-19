@@ -24,6 +24,9 @@ export default function Nav() {
           <NavLink to="/items/new" className={linkClass}>
             Create
           </NavLink>
+          <NavLink to="/assemblies/builder" className={linkClass}>
+            Builder
+          </NavLink>
         </nav>
       </div>
     </header>

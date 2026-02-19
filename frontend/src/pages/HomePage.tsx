@@ -8,16 +8,21 @@ type HomePageProps = {
 
 export default function HomePage({ items }: HomePageProps) {
   const counts = useMemo(() => {
-    const base = { material: 0, part: 0, product: 0 };
-    for (const item of items) base[item.category] += 1;
+    const base = { material: 0, assembly: 0, sellable: 0, final: 0 };
+    for (const item of items) {
+      base[item.item_type] += 1;
+      if (item.is_sellable) base.sellable += 1;
+      if (item.is_final) base.final += 1;
+    }
     return base;
   }, [items]);
 
   const cards = [
     { label: "Total Items", value: items.length },
     { label: "Materials", value: counts.material },
-    { label: "Parts", value: counts.part },
-    { label: "Products", value: counts.product },
+    { label: "Assemblies", value: counts.assembly },
+    { label: "Sellable", value: counts.sellable },
+    { label: "Final", value: counts.final },
   ];
 
   return (
@@ -45,7 +50,7 @@ export default function HomePage({ items }: HomePageProps) {
         </div>
       </div>
 
-      <section className="mt-8 grid gap-4 md:grid-cols-4">
+      <section className="mt-8 grid gap-4 md:grid-cols-5">
         {cards.map((card) => (
           <article
             key={card.label}

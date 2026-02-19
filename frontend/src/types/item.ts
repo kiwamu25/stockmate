@@ -3,15 +3,19 @@ export type Item = {
   series_id?: number;
   sku: string;
   name: string;
-  category: "material" | "part" | "product";
+  item_type: "material" | "assembly";
   pack_qty?: number;
   managed_unit: "g" | "pcs";
   rev_code?: string;
   stock_managed: boolean;
+  is_sellable: boolean;
+  is_final: boolean;
+  output_category?: string;
   note?: string;
   created_at?: string;
   updated_at?: string;
-  product?: {
+  assembly?: {
+    manufacturer?: string;
     total_weight?: number;
     pack_size?: string;
     note?: string;
@@ -20,9 +24,5 @@ export type Item = {
     manufacturer?: string;
     material_type?: string;
     color?: string;
-  };
-  part?: {
-    manufacturer?: string;
-    note?: string;
   };
 };
