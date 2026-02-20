@@ -1,20 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import ItemCsvTools from "../components/ItemCsvTools";
 import type { Item } from "../types/item";
 
 export default function CreateItemPage() {
-  const navigate = useNavigate();
+  type SelectableItemType = Item["item_type"] | "";
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [historyError, setHistoryError] = useState("");
   const [historyItems, setHistoryItems] = useState<Item[]>([]);
   const [form, setForm] = useState({
     sku: "",
     name: "",
-    item_type: "assembly" as Item["item_type"],
+    item_type: "" as SelectableItemType,
     managed_unit: "pcs" as Item["managed_unit"],
     pack_qty: "",
+    reorder_point: "0",
     rev_code: "",
     stock_managed: true,
     is_sellable: false,
@@ -34,13 +35,20 @@ export default function CreateItemPage() {
     color: "",
   });
 
-  function resetFormsByType(itemType: Item["item_type"]) {
+  function normalizeItemType(value: string): Item["item_type"] {
+    if (value === "assembly") return "assembly";
+    if (value === "component" || value === "material") return "component";
+    return "component";
+  }
+
+  function resetFormsByType(itemType: SelectableItemType) {
     setForm({
       sku: "",
       name: "",
       item_type: itemType,
       managed_unit: "pcs",
       pack_qty: "",
+      reorder_point: "0",
       rev_code: "",
       stock_managed: true,
       is_sellable: false,
@@ -78,18 +86,30 @@ export default function CreateItemPage() {
   }, [loadHistoryItems]);
 
   const filteredHistory = useMemo(
-    () => historyItems.filter((item) => item.item_type === form.item_type).slice(0, 8),
+    () => {
+      if (!form.item_type) return [];
+      return historyItems
+        .filter((item) => normalizeItemType(item.item_type) === form.item_type)
+        .slice(0, 8);
+    },
     [historyItems, form.item_type],
   );
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
+    setSuccess("");
 
     const sku = form.sku.trim();
     const name = form.name.trim();
+    if (!form.item_type) {
+      setError("Item Type is required.");
+      return;
+    }
     const packQtyText = form.pack_qty.trim();
     const packQty = packQtyText === "" ? null : Number(packQtyText);
+    const reorderPointText = form.reorder_point.trim();
+    const reorderPoint = reorderPointText === "" ? 0 : Number(reorderPointText);
     const assemblyTotalWeightText = assemblyForm.total_weight.trim();
     const assemblyTotalWeight =
       assemblyTotalWeightText === "" ? null : Number(assemblyTotalWeightText);
@@ -102,6 +122,13 @@ export default function CreateItemPage() {
       (packQty === null || !Number.isFinite(packQty) || packQty <= 0)
     ) {
       setError("Pack Qty must be a positive number.");
+      return;
+    }
+    if (
+      reorderPointText !== "" &&
+      (!Number.isFinite(reorderPoint) || reorderPoint < 0)
+    ) {
+      setError("Reorder Point must be zero or a positive number.");
       return;
     }
     if (
@@ -123,6 +150,7 @@ export default function CreateItemPage() {
         item_type: form.item_type,
         managed_unit: form.managed_unit,
         pack_qty: packQty,
+        reorder_point: reorderPoint,
         rev_code: form.rev_code.trim(),
         stock_managed: form.stock_managed,
         is_sellable: form.is_sellable,
@@ -153,7 +181,9 @@ export default function CreateItemPage() {
       });
 
       if (!res.ok) throw new Error(await res.text());
-      navigate("/items");
+      setSuccess("Item created.");
+      resetFormsByType("");
+      void loadHistoryItems();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create item");
     } finally {
@@ -166,9 +196,10 @@ export default function CreateItemPage() {
       ...f,
       sku: item.sku,
       name: item.name,
-      item_type: item.item_type,
+      item_type: normalizeItemType(item.item_type),
       managed_unit: item.managed_unit,
       pack_qty: item.pack_qty?.toString() ?? "",
+      reorder_point: item.reorder_point?.toString() ?? "0",
       rev_code: item.rev_code ?? "",
       stock_managed: item.stock_managed,
       is_sellable: item.is_sellable,
@@ -205,41 +236,49 @@ export default function CreateItemPage() {
               {error}
             </div>
           )}
+          {success && (
+            <div className="mt-4 rounded-lg bg-emerald-50 px-4 py-2 text-sm text-emerald-700">
+              {success}
+            </div>
+          )}
 
           <form onSubmit={onSubmit} className="mt-5 grid gap-4 md:grid-cols-2">
-            <label className="text-sm font-medium text-gray-700">
-              SKU *
-              <input
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                value={form.sku}
-                onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
-                placeholder="ITEM-001"
-              />
-            </label>
-
-            <label className="text-sm font-medium text-gray-700">
-              Name *
-              <input
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="Sample Item"
-              />
-            </label>
-
-            <label className="text-sm font-medium text-gray-700">
+            <label className="text-sm font-medium text-gray-700 md:col-span-2">
               Item Type *
               <select
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
                 value={form.item_type}
-                onChange={(e) => resetFormsByType(e.target.value as Item["item_type"])}
+                onChange={(e) => resetFormsByType(e.target.value as SelectableItemType)}
               >
+                <option value="">-- select --</option>
                 <option value="component">component</option>
                 <option value="assembly">assembly</option>
               </select>
             </label>
 
-            <label className="text-sm font-medium text-gray-700">
+            {form.item_type !== "" && (
+              <div className="md:col-span-2 grid gap-4 md:grid-cols-2 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <label className="text-sm font-medium text-gray-700">
+                  SKU *
+                  <input
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                    value={form.sku}
+                    onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
+                    placeholder="ITEM-001"
+                  />
+                </label>
+
+                <label className="text-sm font-medium text-gray-700">
+                  Name *
+                  <input
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                    value={form.name}
+                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                    placeholder="Sample Item"
+                  />
+                </label>
+
+                <label className="text-sm font-medium text-gray-700">
               Managed Unit *
               <select
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
@@ -253,7 +292,7 @@ export default function CreateItemPage() {
               </select>
             </label>
 
-            <label className="text-sm font-medium text-gray-700">
+                <label className="text-sm font-medium text-gray-700">
               Pack Qty
               <input
                 type="number"
@@ -266,7 +305,20 @@ export default function CreateItemPage() {
               />
             </label>
 
-            <label className="text-sm font-medium text-gray-700">
+                <label className="text-sm font-medium text-gray-700">
+              Reorder Point
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+                value={form.reorder_point}
+                onChange={(e) => setForm((f) => ({ ...f, reorder_point: e.target.value }))}
+                placeholder="minimum stock to keep"
+              />
+            </label>
+
+                <label className="text-sm font-medium text-gray-700">
               Output Category
               <input
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
@@ -276,7 +328,7 @@ export default function CreateItemPage() {
               />
             </label>
 
-            <label className="text-sm font-medium text-gray-700 md:col-span-2">
+                <label className="text-sm font-medium text-gray-700 md:col-span-2">
               Rev Code
               <input
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
@@ -286,7 +338,7 @@ export default function CreateItemPage() {
               />
             </label>
 
-            <label className="text-sm font-medium text-gray-700 md:col-span-2">
+                <label className="text-sm font-medium text-gray-700 md:col-span-2">
               Note
               <input
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
@@ -296,7 +348,7 @@ export default function CreateItemPage() {
               />
             </label>
 
-            {form.item_type === "assembly" && (
+                {form.item_type === "assembly" && (
               <>
                 <label className="text-sm font-medium text-gray-700">
                   Assembly Manufacturer
@@ -346,7 +398,7 @@ export default function CreateItemPage() {
               </>
             )}
 
-            {form.item_type === "component" && (
+                {form.item_type === "component" && (
               <>
                 <label className="text-sm font-medium text-gray-700">
                   Component Manufacturer
@@ -384,7 +436,7 @@ export default function CreateItemPage() {
               </>
             )}
 
-            <label className="flex items-center gap-2 text-sm text-gray-700">
+                <label className="flex items-center gap-2 text-sm text-gray-700">
               <input
                 type="checkbox"
                 checked={form.stock_managed}
@@ -395,7 +447,7 @@ export default function CreateItemPage() {
               Stock managed *
             </label>
 
-            <label className="flex items-center gap-2 text-sm text-gray-700">
+                <label className="flex items-center gap-2 text-sm text-gray-700">
               <input
                 type="checkbox"
                 checked={form.is_sellable}
@@ -404,7 +456,7 @@ export default function CreateItemPage() {
               Sellable *
             </label>
 
-            <label className="flex items-center gap-2 text-sm text-gray-700 md:col-span-2">
+                <label className="flex items-center gap-2 text-sm text-gray-700 md:col-span-2">
               <input
                 type="checkbox"
                 checked={form.is_final}
@@ -413,18 +465,20 @@ export default function CreateItemPage() {
               Final item *
             </label>
 
-            <button
+                <button
               type="submit"
               disabled={saving}
               className="rounded-full bg-gray-900 px-5 py-2 font-bold text-white transition hover:bg-black disabled:opacity-50 md:col-span-2"
             >
               {saving ? "Saving..." : "Create Item"}
             </button>
+              </div>
+            )}
           </form>
         </div>
         <section className="self-start rounded-2xl border border-gray-200 bg-white p-5 shadow-sm lg:sticky lg:top-24">
           <h2 className="text-base font-bold text-gray-900">
-            Recent {form.item_type} Items
+            Recent {form.item_type || "-"} Items
           </h2>
           <p className="mt-1 text-xs text-gray-500">
             Showing latest registrations for the selected item type.
@@ -436,11 +490,15 @@ export default function CreateItemPage() {
             </div>
           )}
 
-          {!historyError && filteredHistory.length === 0 && (
+          {!historyError && form.item_type === "" && (
+            <p className="mt-3 text-sm text-gray-500">Select Item Type to show history.</p>
+          )}
+
+          {!historyError && form.item_type !== "" && filteredHistory.length === 0 && (
             <p className="mt-3 text-sm text-gray-500">No history for this item type yet.</p>
           )}
 
-          {filteredHistory.length > 0 && (
+          {form.item_type !== "" && filteredHistory.length > 0 && (
             <div className="mt-3 overflow-x-auto">
               <table className="w-full border-collapse text-sm">
                 <thead>

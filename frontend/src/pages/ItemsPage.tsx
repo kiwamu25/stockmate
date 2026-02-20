@@ -11,6 +11,7 @@ type EditForm = {
   name: string;
   managed_unit: Item["managed_unit"];
   pack_qty: string;
+  reorder_point: string;
   rev_code: string;
   note: string;
   stock_managed: boolean;
@@ -37,6 +38,7 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
     name: "",
     managed_unit: "pcs",
     pack_qty: "",
+    reorder_point: "0",
     rev_code: "",
     note: "",
     stock_managed: true,
@@ -73,6 +75,7 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
       name: item.name,
       managed_unit: item.managed_unit,
       pack_qty: item.pack_qty?.toString() ?? "",
+      reorder_point: item.reorder_point?.toString() ?? "0",
       rev_code: item.rev_code ?? "",
       note: item.note ?? "",
       stock_managed: item.stock_managed,
@@ -102,8 +105,14 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
     }
     const packQtyText = editForm.pack_qty.trim();
     const packQty = packQtyText === "" ? null : Number(packQtyText);
+    const reorderPointText = editForm.reorder_point.trim();
+    const reorderPoint = reorderPointText === "" ? 0 : Number(reorderPointText);
     if (packQtyText !== "" && (!Number.isFinite(packQty) || Number(packQty) <= 0)) {
       setSaveError("Pack Qty must be a positive number.");
+      return;
+    }
+    if (reorderPointText !== "" && (!Number.isFinite(reorderPoint) || Number(reorderPoint) < 0)) {
+      setSaveError("Reorder Point must be zero or a positive number.");
       return;
     }
     const totalWeightText = editForm.assembly_total_weight.trim();
@@ -122,6 +131,7 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
       name,
       managed_unit: editForm.managed_unit,
       pack_qty: packQty,
+      reorder_point: reorderPoint,
       rev_code: editForm.rev_code.trim(),
       stock_managed: editForm.stock_managed,
       is_sellable: editForm.is_sellable,
@@ -164,6 +174,7 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
             name,
             managed_unit: editForm.managed_unit,
             pack_qty: packQty ?? undefined,
+            reorder_point: reorderPoint,
             rev_code: editForm.rev_code.trim() || undefined,
             note: editForm.note.trim() || undefined,
             stock_managed: editForm.stock_managed,
@@ -338,6 +349,15 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                 className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
                 value={editing ? editForm.pack_qty : selectedItem.pack_qty?.toString() ?? ""}
                 onChange={(e) => setEditForm((f) => ({ ...f, pack_qty: e.target.value }))}
+              />
+            </label>
+            <label className="font-medium">
+              Reorder Point
+              <input
+                disabled={!editing}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+                value={editing ? editForm.reorder_point : selectedItem.reorder_point?.toString() ?? "0"}
+                onChange={(e) => setEditForm((f) => ({ ...f, reorder_point: e.target.value }))}
               />
             </label>
             <label className="font-medium">

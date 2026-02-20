@@ -3,6 +3,7 @@ import type { Item } from "../types/item";
 
 type ItemType = Item["item_type"];
 type ManagedUnit = Item["managed_unit"];
+type CsvEncoding = "utf-8" | "shift_jis";
 
 type ItemCsvToolsProps = {
   onImported?: () => Promise<void> | void;
@@ -31,6 +32,7 @@ const TYPE_HEADERS: Record<ItemType, string[]> = {
     "name",
     "managed_unit",
     "pack_qty",
+    "reorder_point",
     "rev_code",
     "stock_managed",
     "is_sellable",
@@ -46,6 +48,7 @@ const TYPE_HEADERS: Record<ItemType, string[]> = {
     "name",
     "managed_unit",
     "pack_qty",
+    "reorder_point",
     "rev_code",
     "stock_managed",
     "is_sellable",
@@ -61,25 +64,27 @@ const TYPE_HEADERS: Record<ItemType, string[]> = {
 
 const TEMPLATE_ROWS: Record<ItemType, string[]> = {
   component: [
-    "MAT-001",
-    "PLA Black",
-    "g",
-    "1000",
+    "PRT-001",
+    "M3 Nut",
+    "pcs",
+    "100",
+    "20",
     "A",
     "true",
     "false",
     "false",
     "",
     "",
-    "Bambu Lab",
-    "PLA",
-    "Black",
+    "Generic",
+    "part",
+    "",
   ],
   assembly: [
     "ASM-001",
     "Phone Stand",
     "pcs",
     "10",
+    "3",
     "A",
     "true",
     "true",
@@ -159,6 +164,16 @@ function parseOptionalPositiveNumber(text: string, field: string): number | null
   return n;
 }
 
+function parseOptionalNonNegativeNumber(text: string, field: string, emptyValue: number): number {
+  const trimmed = text.trim();
+  if (trimmed === "") return emptyValue;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error(`${field} must be zero or a positive number.`);
+  }
+  return n;
+}
+
 function parseManagedUnit(text: string): ManagedUnit {
   const unit = (text.trim() || "pcs") as ManagedUnit;
   if (unit !== "pcs" && unit !== "g") {
@@ -175,6 +190,15 @@ function parseBoolean(text: string, field: string, defaultValue: boolean): boole
   throw new Error(`${field} must be true/false (or 1/0).`);
 }
 
+function decodeCsv(bytes: Uint8Array, encoding: CsvEncoding): string {
+  try {
+    return new TextDecoder(encoding, { fatal: true }).decode(bytes);
+  } catch {
+    const label = encoding === "utf-8" ? "UTF-8" : "SJIS";
+    throw new Error(`Failed to decode CSV as ${label}. Try another encoding.`);
+  }
+}
+
 function buildPayload(itemType: ItemType, rowMap: Record<string, string>): Record<string, unknown> {
   const sku = (rowMap.sku ?? "").trim();
   const name = (rowMap.name ?? "").trim();
@@ -188,6 +212,11 @@ function buildPayload(itemType: ItemType, rowMap: Record<string, string>): Recor
     item_type: itemType,
     managed_unit: parseManagedUnit(rowMap.managed_unit ?? ""),
     pack_qty: parseOptionalPositiveNumber(rowMap.pack_qty ?? "", "pack_qty"),
+    reorder_point: parseOptionalNonNegativeNumber(
+      rowMap.reorder_point ?? "",
+      "reorder_point",
+      0,
+    ),
     rev_code: (rowMap.rev_code ?? "").trim(),
     stock_managed: parseBoolean(rowMap.stock_managed ?? "", "stock_managed", true),
     is_sellable: parseBoolean(rowMap.is_sellable ?? "", "is_sellable", false),
@@ -218,12 +247,65 @@ function buildPayload(itemType: ItemType, rowMap: Record<string, string>): Recor
 }
 
 export default function ItemCsvTools({ onImported }: ItemCsvToolsProps) {
+  const [isOpen, setIsOpen] = useState(false);
   const [itemType, setItemType] = useState<ItemType>("assembly");
+  const [encoding, setEncoding] = useState<CsvEncoding>("utf-8");
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
   const [importSummary, setImportSummary] = useState("");
   const [previewName, setPreviewName] = useState("");
   const [previewRows, setPreviewRows] = useState<ParsedRow[]>([]);
+  const [sourceBytes, setSourceBytes] = useState<Uint8Array | null>(null);
+
+  function buildPreview(bytes: Uint8Array, nextItemType: ItemType, nextEncoding: CsvEncoding) {
+    const csvText = decodeCsv(bytes, nextEncoding);
+    const rows = parseCsv(csvText);
+    if (rows.length < 2) {
+      throw new Error("CSV has no data rows.");
+    }
+
+    const header = rows[0].map((h) => h.trim());
+    const requiredHeader = TYPE_HEADERS[nextItemType];
+    const headerMissing = requiredHeader.filter((h) => !header.includes(h));
+    if (headerMissing.length > 0) {
+      throw new Error(`Missing required columns: ${headerMissing.join(", ")}`);
+    }
+
+    const parsed: ParsedRow[] = [];
+    for (let rowIndex = 1; rowIndex < rows.length; rowIndex += 1) {
+      const row = rows[rowIndex];
+      if (row.every((value) => value.trim() === "")) continue;
+
+      const rowMap: Record<string, string> = {};
+      for (let i = 0; i < header.length; i += 1) {
+        rowMap[header[i]] = row[i] ?? "";
+      }
+
+      try {
+        parsed.push({
+          line: rowIndex + 1,
+          sku: (rowMap.sku ?? "").trim(),
+          name: (rowMap.name ?? "").trim(),
+          payload: buildPayload(nextItemType, rowMap),
+          error: "",
+        });
+      } catch (rowError) {
+        const message = rowError instanceof Error ? rowError.message : "unknown error";
+        parsed.push({
+          line: rowIndex + 1,
+          sku: (rowMap.sku ?? "").trim(),
+          name: (rowMap.name ?? "").trim(),
+          payload: null,
+          error: message,
+        });
+      }
+    }
+
+    if (parsed.length === 0) {
+      throw new Error("CSV has no valid data rows.");
+    }
+    return parsed;
+  }
 
   function downloadTemplate(targetType: ItemType) {
     const header = TYPE_HEADERS[targetType];
@@ -252,53 +334,9 @@ export default function ItemCsvTools({ onImported }: ItemCsvToolsProps) {
     setPreviewName(file.name);
 
     try {
-      const csvText = await file.text();
-      const rows = parseCsv(csvText);
-      if (rows.length < 2) {
-        throw new Error("CSV has no data rows.");
-      }
-
-      const header = rows[0].map((h) => h.trim());
-      const requiredHeader = TYPE_HEADERS[itemType];
-      const headerMissing = requiredHeader.filter((h) => !header.includes(h));
-      if (headerMissing.length > 0) {
-        throw new Error(`Missing required columns: ${headerMissing.join(", ")}`);
-      }
-
-      const parsed: ParsedRow[] = [];
-
-      for (let rowIndex = 1; rowIndex < rows.length; rowIndex += 1) {
-        const row = rows[rowIndex];
-        if (row.every((value) => value.trim() === "")) continue;
-
-        const rowMap: Record<string, string> = {};
-        for (let i = 0; i < header.length; i += 1) {
-          rowMap[header[i]] = row[i] ?? "";
-        }
-
-        try {
-          parsed.push({
-            line: rowIndex + 1,
-            sku: (rowMap.sku ?? "").trim(),
-            name: (rowMap.name ?? "").trim(),
-            payload: buildPayload(itemType, rowMap),
-            error: "",
-          });
-        } catch (rowError) {
-          const message = rowError instanceof Error ? rowError.message : "unknown error";
-          parsed.push({
-            line: rowIndex + 1,
-            sku: (rowMap.sku ?? "").trim(),
-            name: (rowMap.name ?? "").trim(),
-            payload: null,
-            error: message,
-          });
-        }
-      }
-
-      if (parsed.length === 0) {
-        throw new Error("CSV has no valid data rows.");
-      }
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const parsed = buildPreview(bytes, itemType, encoding);
+      setSourceBytes(bytes);
       setPreviewRows(parsed);
       const okCount = parsed.filter((row) => row.payload !== null).length;
       const ngCount = parsed.length - okCount;
@@ -367,121 +405,166 @@ export default function ItemCsvTools({ onImported }: ItemCsvToolsProps) {
 
   return (
     <section className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
-      <h2 className="text-sm font-bold text-gray-900">CSV Template / Import</h2>
-      <p className="mt-1 text-xs text-gray-600">
-        Download an item type template, then import filled CSV with the same columns.
-      </p>
+      <button
+        type="button"
+        className="flex w-full items-center justify-between text-left"
+        onClick={() => setIsOpen((open) => !open)}
+        aria-expanded={isOpen}
+      >
+        <span className="text-sm font-bold text-gray-900">CSV Template / Import</span>
+        <span className="text-xs font-semibold text-gray-600">{isOpen ? "Hide" : "Show"}</span>
+      </button>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => downloadTemplate("component")}
-          className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-100"
-        >
-          Download component CSV
-        </button>
-        <button
-          type="button"
-          onClick={() => downloadTemplate("assembly")}
-          className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-100"
-        >
-          Download assembly CSV
-        </button>
-      </div>
+      {isOpen && (
+        <>
+          <p className="mt-1 text-xs text-gray-600">
+            Download an item type template, then import filled CSV with the same columns.
+          </p>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-[180px_minmax(0,1fr)] md:items-end">
-        <label className="text-xs font-semibold text-gray-700">
-          Import Item Type
-          <select
-            className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-            value={itemType}
-            onChange={(e) => {
-              setItemType(e.target.value as ItemType);
-              setPreviewRows([]);
-              setPreviewName("");
-              setImportSummary("");
-              setImportError("");
-            }}
-            disabled={importing}
-          >
-            <option value="component">component</option>
-            <option value="assembly">assembly</option>
-          </select>
-        </label>
-
-        <label className="text-xs font-semibold text-gray-700">
-          CSV File
-          <input
-            type="file"
-            accept=".csv,text/csv"
-            onChange={onSelectCsvFile}
-            disabled={importing}
-            className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-full file:border-0 file:bg-gray-900 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white"
-          />
-        </label>
-      </div>
-
-      {previewRows.length > 0 && (
-        <div className="mt-4 rounded-lg border border-gray-200 bg-white p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-semibold text-gray-800">
-              Preview: {previewName} ({previewRows.length} rows)
-            </p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={confirmImport}
-              disabled={importing || previewRows.every((row) => row.payload === null)}
-              className="rounded-full bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black disabled:opacity-50"
+              onClick={() => downloadTemplate("assembly")}
+              className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-100"
             >
-              {importing ? "Inserting..." : "OK: Insert Rows"}
+              Download <span className="text-red-500 text-lg">Assembly</span> CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadTemplate("component")}
+              className="rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-100"
+            >
+              Download <span className="text-blue-500 text-lg">Component</span> CSV
             </button>
           </div>
 
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full border-collapse text-xs">
-              <thead>
-                <tr className="bg-gray-100 text-left text-gray-600">
-                  <th className="p-2">Line</th>
-                  <th className="p-2">SKU</th>
-                  <th className="p-2">Name</th>
-                  <th className="p-2">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {previewRows.slice(0, 20).map((row) => (
-                  <tr key={row.line} className="border-b border-gray-100">
-                    <td className="p-2">{row.line}</td>
-                    <td className="p-2 font-mono">{row.sku || "-"}</td>
-                    <td className="p-2">{row.name || "-"}</td>
-                    <td className="p-2">
-                      {row.error ? (
-                        <span className="text-red-700">{row.error}</span>
-                      ) : (
-                        <span className="text-emerald-700">OK</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mt-4 grid gap-3 md:grid-cols-[180px_160px_minmax(0,1fr)] md:items-end">
+            <label className="text-xs font-semibold text-gray-700">
+              Import Item Type
+              <select
+                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                value={itemType}
+                onChange={(e) => {
+                  setItemType(e.target.value as ItemType);
+                  setPreviewRows([]);
+                  setPreviewName("");
+                  setSourceBytes(null);
+                  setImportSummary("");
+                  setImportError("");
+                }}
+                disabled={importing}
+              >
+                <option value="component">component</option>
+                <option value="assembly">assembly</option>
+              </select>
+            </label>
+
+            <label className="text-xs font-semibold text-gray-700">
+              CSV Encoding <br/>(Excel uses Shift-JIS)
+              <select
+                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                value={encoding}
+                onChange={(e) => {
+                  const nextEncoding = e.target.value as CsvEncoding;
+                  setEncoding(nextEncoding);
+                  setImportSummary("");
+                  setImportError("");
+                  if (!sourceBytes) return;
+                  try {
+                    const parsed = buildPreview(sourceBytes, itemType, nextEncoding);
+                    setPreviewRows(parsed);
+                    const okCount = parsed.filter((row) => row.payload !== null).length;
+                    const ngCount = parsed.length - okCount;
+                    setImportSummary(
+                      `Preview ready: ${okCount} row(s) can be inserted. ${ngCount} row(s) invalid.`,
+                    );
+                  } catch (error) {
+                    setPreviewRows([]);
+                    setImportError(error instanceof Error ? error.message : "failed to decode csv");
+                  }
+                }}
+                disabled={importing}
+              >
+                <option value="utf-8">UTF-8</option>
+                <option value="shift_jis">SJIS</option>
+              </select>
+            </label>
+
+            <label className="text-xs font-semibold text-gray-700">
+              CSV File
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={onSelectCsvFile}
+                disabled={importing}
+                className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-full file:border-0 file:bg-gray-900 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white"
+              />
+            </label>
           </div>
-          {previewRows.length > 20 && (
-            <p className="mt-2 text-[11px] text-gray-500">
-              Showing first 20 rows only.
+
+          {previewRows.length > 0 && (
+            <div className="mt-4 rounded-lg border border-gray-200 bg-white p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-gray-800">
+                  Preview: {previewName} ({previewRows.length} rows)
+                </p>
+                <button
+                  type="button"
+                  onClick={confirmImport}
+                  disabled={importing || previewRows.every((row) => row.payload === null)}
+                  className="rounded-full bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-black disabled:opacity-50"
+                >
+                  {importing ? "Inserting..." : "OK: Insert Rows"}
+                </button>
+              </div>
+
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-gray-100 text-left text-gray-600">
+                      <th className="p-2">Line</th>
+                      <th className="p-2">SKU</th>
+                      <th className="p-2">Name</th>
+                      <th className="p-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewRows.slice(0, 20).map((row) => (
+                      <tr key={row.line} className="border-b border-gray-100">
+                        <td className="p-2">{row.line}</td>
+                        <td className="p-2 font-mono">{row.sku || "-"}</td>
+                        <td className="p-2">{row.name || "-"}</td>
+                        <td className="p-2">
+                          {row.error ? (
+                            <span className="text-red-700">{row.error}</span>
+                          ) : (
+                            <span className="text-emerald-700">OK</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {previewRows.length > 20 && (
+                <p className="mt-2 text-[11px] text-gray-500">
+                  Showing first 20 rows only.
+                </p>
+              )}
+            </div>
+          )}
+
+          {importSummary && (
+            <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+              {importSummary}
             </p>
           )}
-        </div>
-      )}
-
-      {importSummary && (
-        <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-          {importSummary}
-        </p>
-      )}
-      {importError && (
-        <pre className="mt-3 whitespace-pre-wrap rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
-          {importError}
-        </pre>
+          {importError && (
+            <pre className="mt-3 whitespace-pre-wrap rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+              {importError}
+            </pre>
+          )}
+        </>
       )}
     </section>
   );

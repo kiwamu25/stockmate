@@ -20,6 +20,7 @@ type Item struct {
 	Name           string           `json:"name"`
 	ItemType       string           `json:"item_type"`
 	PackQty        *float64         `json:"pack_qty,omitempty"`
+	ReorderPoint   *float64         `json:"reorder_point,omitempty"`
 	ManagedUnit    string           `json:"managed_unit"`
 	RevCode        string           `json:"rev_code,omitempty"`
 	StockManaged   bool             `json:"stock_managed"`
@@ -80,6 +81,49 @@ type AssemblyStock struct {
 	UpdatedAt string  `json:"updated_at,omitempty"`
 }
 
+type ProductionPart struct {
+	ItemID       int64   `json:"item_id"`
+	SKU          string  `json:"sku"`
+	Name         string  `json:"name"`
+	ItemType     string  `json:"item_type"`
+	ManagedUnit  string  `json:"managed_unit"`
+	CurrentRevNo int64   `json:"current_rev_no"`
+	StockQty     float64 `json:"stock_qty"`
+	UpdatedAt    string  `json:"updated_at,omitempty"`
+}
+
+type ProductionConsumption struct {
+	ItemID        int64   `json:"item_id"`
+	SKU           string  `json:"sku"`
+	Name          string  `json:"name"`
+	ItemType      string  `json:"item_type"`
+	ComponentType string  `json:"component_type,omitempty"`
+	ManagedUnit   string  `json:"managed_unit"`
+	Qty           float64 `json:"qty"`
+}
+
+type ShippingAssembly struct {
+	ItemID       int64   `json:"item_id"`
+	SKU          string  `json:"sku"`
+	Name         string  `json:"name"`
+	ManagedUnit  string  `json:"managed_unit"`
+	CurrentRevNo int64   `json:"current_rev_no"`
+	StockQty     float64 `json:"stock_qty"`
+	UpdatedAt    string  `json:"updated_at,omitempty"`
+}
+
+type StockSummaryRow struct {
+	ItemID        int64   `json:"item_id"`
+	SKU           string  `json:"sku"`
+	Name          string  `json:"name"`
+	ItemType      string  `json:"item_type"`
+	ComponentType string  `json:"component_type,omitempty"`
+	ManagedUnit   string  `json:"managed_unit"`
+	StockManaged  bool    `json:"stock_managed"`
+	StockQty      float64 `json:"stock_qty"`
+	UpdatedAt     string  `json:"updated_at,omitempty"`
+}
+
 func main() {
 	dsn := os.Getenv("DB_DSN")
 	if dsn == "" {
@@ -127,12 +171,124 @@ func main() {
 	r.Put("/api/assemblies/{id}/components", createAssemblyComponentsRevision(conn))
 	r.Delete("/api/assemblies/{id}/components/{rev}", deleteAssemblyComponentsRevision(conn))
 	r.Get("/api/assemblies/stock", listAssemblyStock(conn))
+	r.Get("/api/stock/summary", listStockSummary(conn))
 	r.Post("/api/assemblies/{id}/adjust", adjustAssemblyStock(conn))
+	r.Get("/api/production/parts", listProductionParts(conn))
+	r.Post("/api/production/parts/{id}/complete", completePartProduction(conn))
+	r.Get("/api/production/shipments/assemblies", listShippingAssemblies(conn))
+	r.Post("/api/production/shipments/complete", completeShipments(conn))
 	r.Put("/api/items/{id}", updateItem(conn))
 
 	fmt.Println("listening on :8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		panic(err)
+	}
+}
+
+func listStockSummary(dbx *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		managedStr := strings.TrimSpace(r.URL.Query().Get("managed"))
+		limit := 200
+		if limitStr := strings.TrimSpace(r.URL.Query().Get("limit")); limitStr != "" {
+			v, err := strconv.Atoi(limitStr)
+			if err != nil || v <= 0 {
+				http.Error(w, "invalid limit", http.StatusBadRequest)
+				return
+			}
+			if v > 1000 {
+				v = 1000
+			}
+			limit = v
+		}
+
+		sb := strings.Builder{}
+		sb.WriteString(`
+SELECT
+  i.item_id,
+  i.sku,
+  i.name,
+  i.item_type,
+  c.component_type,
+  i.managed_unit,
+  i.stock_managed,
+  COALESCE(SUM(
+    CASE WHEN st.transaction_type = 'OUT' THEN -st.qty ELSE st.qty END
+  ), 0) AS stock_qty,
+  MAX(st.created_at) AS updated_at
+FROM items i
+LEFT JOIN components c ON c.item_id = i.item_id
+LEFT JOIN stock_transactions st ON st.item_id = i.item_id
+WHERE 1=1
+`)
+		args := make([]any, 0)
+		if q != "" {
+			sb.WriteString(" AND (i.sku LIKE ? OR i.name LIKE ?)")
+			like := "%" + q + "%"
+			args = append(args, like, like)
+		}
+		if managedStr != "" {
+			switch strings.ToLower(managedStr) {
+			case "1", "true", "yes":
+				sb.WriteString(" AND i.stock_managed = 1")
+			case "0", "false", "no":
+				sb.WriteString(" AND i.stock_managed = 0")
+			default:
+				http.Error(w, "invalid managed", http.StatusBadRequest)
+				return
+			}
+		}
+
+		sb.WriteString(`
+GROUP BY i.item_id, i.sku, i.name, i.item_type, c.component_type, i.managed_unit, i.stock_managed
+ORDER BY i.item_id DESC
+LIMIT ?
+`)
+		args = append(args, limit)
+
+		rows, err := dbx.Query(sb.String(), args...)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		out := make([]StockSummaryRow, 0)
+		for rows.Next() {
+			var row StockSummaryRow
+			var componentType sql.NullString
+			var stockManagedInt int
+			var updatedAt sql.NullString
+			if err := rows.Scan(
+				&row.ItemID,
+				&row.SKU,
+				&row.Name,
+				&row.ItemType,
+				&componentType,
+				&row.ManagedUnit,
+				&stockManagedInt,
+				&row.StockQty,
+				&updatedAt,
+			); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			row.StockManaged = stockManagedInt != 0
+			if componentType.Valid {
+				row.ComponentType = componentType.String
+			}
+			if updatedAt.Valid {
+				row.UpdatedAt = updatedAt.String
+			}
+			out = append(out, row)
+		}
+		if err := rows.Err(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
 	}
 }
 
@@ -168,6 +324,7 @@ func createItem(dbx *sql.DB) http.HandlerFunc {
 		ManagedUnit    string        `json:"managed_unit"`
 		BaseUnit       string        `json:"base_unit"`
 		PackQty        *float64      `json:"pack_qty"`
+		ReorderPoint   *float64      `json:"reorder_point"`
 		RevCode        string        `json:"rev_code"`
 		StockManaged   *bool         `json:"stock_managed"`
 		IsSellable     bool          `json:"is_sellable"`
@@ -216,6 +373,10 @@ func createItem(dbx *sql.DB) http.HandlerFunc {
 			http.Error(w, "pack_qty must be > 0", http.StatusBadRequest)
 			return
 		}
+		if req.ReorderPoint != nil && *req.ReorderPoint < 0 {
+			http.Error(w, "reorder_point must be >= 0", http.StatusBadRequest)
+			return
+		}
 		if req.Assembly != nil && req.Assembly.TotalWeight != nil && *req.Assembly.TotalWeight <= 0 {
 			http.Error(w, "assembly.total_weight must be > 0", http.StatusBadRequest)
 			return
@@ -246,6 +407,10 @@ func createItem(dbx *sql.DB) http.HandlerFunc {
 		if req.PackQty != nil {
 			packQty = *req.PackQty
 		}
+		var reorderPoint any = nil
+		if req.ReorderPoint != nil && *req.ReorderPoint > 0 {
+			reorderPoint = *req.ReorderPoint
+		}
 
 		tx, err := dbx.BeginTx(r.Context(), nil)
 		if err != nil {
@@ -255,9 +420,9 @@ func createItem(dbx *sql.DB) http.HandlerFunc {
 		defer tx.Rollback()
 
 		res, err := tx.Exec(`
-INSERT INTO items(series_id, sku, name, item_type, stock_managed, is_sellable, is_final, output_category, pack_qty, managed_unit, rev_code, note)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
-`, seriesID, req.SKU, req.Name, itemType, sm, sellable, final, req.OutputCategory, packQty, unit, req.RevCode, req.Note)
+INSERT INTO items(series_id, sku, name, item_type, stock_managed, is_sellable, is_final, output_category, pack_qty, reorder_point, managed_unit, rev_code, note)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+`, seriesID, req.SKU, req.Name, itemType, sm, sellable, final, req.OutputCategory, packQty, reorderPoint, unit, req.RevCode, req.Note)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -316,6 +481,10 @@ VALUES(?,?,?,?)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
+		respReorderPoint := 0.0
+		if req.ReorderPoint != nil {
+			respReorderPoint = *req.ReorderPoint
+		}
 		_ = json.NewEncoder(w).Encode(Item{
 			ID:             id,
 			SeriesID:       req.SeriesID,
@@ -323,6 +492,7 @@ VALUES(?,?,?,?)
 			Name:           req.Name,
 			ItemType:       itemType,
 			PackQty:        req.PackQty,
+			ReorderPoint:   &respReorderPoint,
 			ManagedUnit:    unit,
 			RevCode:        req.RevCode,
 			StockManaged:   stockManaged,
@@ -344,6 +514,7 @@ SELECT
   i.name,
   i.item_type,
   i.pack_qty,
+  i.reorder_point,
   i.managed_unit,
   i.rev_code,
   i.stock_managed,
@@ -380,6 +551,7 @@ LIMIT 200
 			var name sql.NullString
 			var itemType sql.NullString
 			var packQty sql.NullFloat64
+			var reorderPoint sql.NullFloat64
 			var managedUnit sql.NullString
 			var revCode sql.NullString
 			var outputCategory sql.NullString
@@ -403,6 +575,7 @@ LIMIT 200
 				&name,
 				&itemType,
 				&packQty,
+				&reorderPoint,
 				&managedUnit,
 				&revCode,
 				&sm,
@@ -440,6 +613,11 @@ LIMIT 200
 				pq := packQty.Float64
 				it.PackQty = &pq
 			}
+			rp := 0.0
+			if reorderPoint.Valid {
+				rp = reorderPoint.Float64
+			}
+			it.ReorderPoint = &rp
 			if managedUnit.Valid {
 				it.ManagedUnit = managedUnit.String
 			}
@@ -517,6 +695,7 @@ SELECT
   i.name,
   i.item_type,
   i.pack_qty,
+  i.reorder_point,
   i.managed_unit,
   i.rev_code,
   i.stock_managed,
@@ -607,6 +786,7 @@ WHERE i.item_type = 'assembly'
 			var it Item
 			var seriesID sql.NullInt64
 			var packQty sql.NullFloat64
+			var reorderPoint sql.NullFloat64
 			var revCode sql.NullString
 			var outputCategory sql.NullString
 			var note sql.NullString
@@ -626,6 +806,7 @@ WHERE i.item_type = 'assembly'
 				&it.Name,
 				&it.ItemType,
 				&packQty,
+				&reorderPoint,
 				&it.ManagedUnit,
 				&revCode,
 				&sm,
@@ -651,6 +832,11 @@ WHERE i.item_type = 'assembly'
 				pq := packQty.Float64
 				it.PackQty = &pq
 			}
+			rp := 0.0
+			if reorderPoint.Valid {
+				rp = reorderPoint.Float64
+			}
+			it.ReorderPoint = &rp
 			if revCode.Valid {
 				it.RevCode = revCode.String
 			}
@@ -707,6 +893,7 @@ func updateItem(dbx *sql.DB) http.HandlerFunc {
 		Name           string        `json:"name"`
 		ManagedUnit    string        `json:"managed_unit"`
 		PackQty        *float64      `json:"pack_qty"`
+		ReorderPoint   *float64      `json:"reorder_point"`
 		RevCode        string        `json:"rev_code"`
 		StockManaged   bool          `json:"stock_managed"`
 		IsSellable     bool          `json:"is_sellable"`
@@ -749,6 +936,10 @@ func updateItem(dbx *sql.DB) http.HandlerFunc {
 			http.Error(w, "pack_qty must be > 0", http.StatusBadRequest)
 			return
 		}
+		if req.ReorderPoint != nil && *req.ReorderPoint < 0 {
+			http.Error(w, "reorder_point must be >= 0", http.StatusBadRequest)
+			return
+		}
 		if req.Assembly != nil && req.Assembly.TotalWeight != nil && *req.Assembly.TotalWeight <= 0 {
 			http.Error(w, "assembly.total_weight must be > 0", http.StatusBadRequest)
 			return
@@ -787,12 +978,16 @@ func updateItem(dbx *sql.DB) http.HandlerFunc {
 		if req.PackQty != nil {
 			packQty = *req.PackQty
 		}
+		var reorderPoint any = nil
+		if req.ReorderPoint != nil && *req.ReorderPoint > 0 {
+			reorderPoint = *req.ReorderPoint
+		}
 
 		if _, err := tx.Exec(`
 UPDATE items
-SET sku = ?, name = ?, stock_managed = ?, is_sellable = ?, is_final = ?, output_category = ?, pack_qty = ?, managed_unit = ?, rev_code = ?, note = ?
+SET sku = ?, name = ?, stock_managed = ?, is_sellable = ?, is_final = ?, output_category = ?, pack_qty = ?, reorder_point = ?, managed_unit = ?, rev_code = ?, note = ?
 WHERE item_id = ?
-`, req.SKU, req.Name, sm, sellable, final, req.OutputCategory, packQty, req.ManagedUnit, req.RevCode, req.Note, itemID); err != nil {
+`, req.SKU, req.Name, sm, sellable, final, req.OutputCategory, packQty, reorderPoint, req.ManagedUnit, req.RevCode, req.Note, itemID); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -1025,6 +1220,529 @@ WHERE item_id = ?
 	}
 }
 
+func listProductionParts(dbx *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		limit := 200
+		if limitStr := strings.TrimSpace(r.URL.Query().Get("limit")); limitStr != "" {
+			v, err := strconv.Atoi(limitStr)
+			if err != nil || v <= 0 {
+				http.Error(w, "invalid limit", http.StatusBadRequest)
+				return
+			}
+			if v > 500 {
+				v = 500
+			}
+			limit = v
+		}
+
+		sb := strings.Builder{}
+		sb.WriteString(`
+SELECT
+  i.item_id,
+  i.sku,
+  i.name,
+  i.item_type,
+  i.managed_unit,
+  ar.rev_no,
+  COALESCE(st.stock_qty, 0) AS stock_qty,
+  st.updated_at
+FROM items i
+LEFT JOIN components c ON c.item_id = i.item_id
+JOIN assembly_records ar ON ar.item_id = i.item_id
+LEFT JOIN (
+  SELECT
+    item_id,
+    COALESCE(SUM(
+      CASE WHEN transaction_type = 'OUT' THEN -qty ELSE qty END
+    ), 0) AS stock_qty,
+    MAX(created_at) AS updated_at
+  FROM stock_transactions
+  GROUP BY item_id
+) st ON st.item_id = i.item_id
+WHERE (
+  i.item_type = 'component'
+  AND c.component_type = 'part'
+)
+  AND ar.rev_no = (
+    SELECT MAX(ar2.rev_no)
+    FROM assembly_records ar2
+    WHERE ar2.item_id = i.item_id
+  )
+`)
+		args := make([]any, 0)
+		if q != "" {
+			sb.WriteString(" AND (i.sku LIKE ? OR i.name LIKE ?)")
+			like := "%" + q + "%"
+			args = append(args, like, like)
+		}
+		sb.WriteString(`
+ORDER BY i.item_id DESC
+LIMIT ?
+`)
+		args = append(args, limit)
+
+		rows, err := dbx.Query(sb.String(), args...)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		out := make([]ProductionPart, 0)
+		for rows.Next() {
+			var row ProductionPart
+			var updatedAt sql.NullString
+			if err := rows.Scan(
+				&row.ItemID,
+				&row.SKU,
+				&row.Name,
+				&row.ItemType,
+				&row.ManagedUnit,
+				&row.CurrentRevNo,
+				&row.StockQty,
+				&updatedAt,
+			); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if updatedAt.Valid {
+				row.UpdatedAt = updatedAt.String
+			}
+			out = append(out, row)
+		}
+		if err := rows.Err(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	}
+}
+
+func completePartProduction(dbx *sql.DB) http.HandlerFunc {
+	type Req struct {
+		Qty  float64 `json:"qty"`
+		Note string  `json:"note"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		idStr := chi.URLParam(r, "id")
+		itemID, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil || itemID <= 0 {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+
+		var req Req
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		req.Note = strings.TrimSpace(req.Note)
+		if req.Qty <= 0 {
+			http.Error(w, "qty must be > 0", http.StatusBadRequest)
+			return
+		}
+
+		var count int
+		if err := dbx.QueryRow(`
+SELECT COUNT(1)
+FROM items i
+LEFT JOIN components c ON c.item_id = i.item_id
+WHERE i.item_id = ?
+  AND i.item_type = 'component'
+  AND c.component_type = 'part'
+`, itemID).Scan(&count); err != nil {
+			http.Error(w, "failed to validate item", http.StatusInternalServerError)
+			return
+		}
+		if count == 0 {
+			http.Error(w, "item must be component(part)", http.StatusBadRequest)
+			return
+		}
+
+		tx, err := dbx.BeginTx(r.Context(), nil)
+		if err != nil {
+			http.Error(w, "failed to begin transaction", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		var recordID int64
+		if err := tx.QueryRow(`
+SELECT record_id
+FROM assembly_records
+WHERE item_id = ?
+ORDER BY rev_no DESC
+LIMIT 1
+`, itemID).Scan(&recordID); err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, "bom revision not found", http.StatusBadRequest)
+				return
+			}
+			http.Error(w, "failed to load bom revision", http.StatusInternalServerError)
+			return
+		}
+
+		if _, err := tx.Exec(`
+INSERT INTO stock_transactions(item_id, qty, transaction_type, note)
+VALUES(?,?,?,?)
+`, itemID, req.Qty, "IN", req.Note); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		compRows, err := tx.Query(`
+SELECT component_item_id, qty_per_unit
+FROM assembly_components
+WHERE record_id = ?
+`, recordID)
+		if err != nil {
+			http.Error(w, "failed to load bom components", http.StatusInternalServerError)
+			return
+		}
+		consumed := make(map[int64]ProductionConsumption)
+		for compRows.Next() {
+			var componentItemID int64
+			var qtyPerUnit float64
+			if err := compRows.Scan(&componentItemID, &qtyPerUnit); err != nil {
+				compRows.Close()
+				http.Error(w, "failed to scan bom components", http.StatusInternalServerError)
+				return
+			}
+			outQty := req.Qty * qtyPerUnit
+			if outQty <= 0 {
+				continue
+			}
+			if _, err := tx.Exec(`
+INSERT INTO stock_transactions(item_id, qty, transaction_type, note)
+VALUES(?,?,?,?)
+`, componentItemID, outQty, "OUT", "production consumption"); err != nil {
+				compRows.Close()
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			row := consumed[componentItemID]
+			if row.ItemID == 0 {
+				var componentType sql.NullString
+				if err := tx.QueryRow(`
+SELECT i.sku, i.name, i.item_type, i.managed_unit, c.component_type
+FROM items i
+LEFT JOIN components c ON c.item_id = i.item_id
+WHERE i.item_id = ?
+`, componentItemID).Scan(&row.SKU, &row.Name, &row.ItemType, &row.ManagedUnit, &componentType); err != nil {
+					compRows.Close()
+					http.Error(w, "failed to load consumed item", http.StatusInternalServerError)
+					return
+				}
+				row.ItemID = componentItemID
+				if componentType.Valid {
+					row.ComponentType = componentType.String
+				}
+			}
+			row.Qty += outQty
+			consumed[componentItemID] = row
+		}
+		if err := compRows.Err(); err != nil {
+			compRows.Close()
+			http.Error(w, "failed to read bom components", http.StatusInternalServerError)
+			return
+		}
+		if err := compRows.Close(); err != nil {
+			http.Error(w, "failed to close bom components", http.StatusInternalServerError)
+			return
+		}
+
+		var stockQty float64
+		if err := tx.QueryRow(`
+SELECT COALESCE(SUM(
+  CASE WHEN transaction_type = 'OUT' THEN -qty ELSE qty END
+), 0)
+FROM stock_transactions
+WHERE item_id = ?
+`, itemID).Scan(&stockQty); err != nil {
+			http.Error(w, "failed to compute stock", http.StatusInternalServerError)
+			return
+		}
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "failed to commit transaction", http.StatusInternalServerError)
+			return
+		}
+		consumedList := make([]ProductionConsumption, 0, len(consumed))
+		for _, row := range consumed {
+			consumedList = append(consumedList, row)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"item_id":      itemID,
+			"stock_qty":    stockQty,
+			"consumptions": consumedList,
+		})
+	}
+}
+
+func listShippingAssemblies(dbx *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		limit := 200
+		if limitStr := strings.TrimSpace(r.URL.Query().Get("limit")); limitStr != "" {
+			v, err := strconv.Atoi(limitStr)
+			if err != nil || v <= 0 {
+				http.Error(w, "invalid limit", http.StatusBadRequest)
+				return
+			}
+			if v > 500 {
+				v = 500
+			}
+			limit = v
+		}
+
+		sb := strings.Builder{}
+		sb.WriteString(`
+SELECT
+  i.item_id,
+  i.sku,
+  i.name,
+  i.managed_unit,
+  ar.rev_no,
+  COALESCE(st.stock_qty, 0) AS stock_qty,
+  st.updated_at
+FROM items i
+JOIN assembly_records ar ON ar.item_id = i.item_id
+LEFT JOIN (
+  SELECT
+    item_id,
+    COALESCE(SUM(
+      CASE WHEN transaction_type = 'OUT' THEN -qty ELSE qty END
+    ), 0) AS stock_qty,
+    MAX(created_at) AS updated_at
+  FROM stock_transactions
+  GROUP BY item_id
+) st ON st.item_id = i.item_id
+WHERE i.item_type = 'assembly'
+  AND ar.rev_no = (
+    SELECT MAX(ar2.rev_no)
+    FROM assembly_records ar2
+    WHERE ar2.item_id = i.item_id
+  )
+`)
+		args := make([]any, 0)
+		if q != "" {
+			sb.WriteString(" AND (i.sku LIKE ? OR i.name LIKE ?)")
+			like := "%" + q + "%"
+			args = append(args, like, like)
+		}
+		sb.WriteString(`
+ORDER BY i.item_id DESC
+LIMIT ?
+`)
+		args = append(args, limit)
+
+		rows, err := dbx.Query(sb.String(), args...)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		out := make([]ShippingAssembly, 0)
+		for rows.Next() {
+			var row ShippingAssembly
+			var updatedAt sql.NullString
+			if err := rows.Scan(
+				&row.ItemID,
+				&row.SKU,
+				&row.Name,
+				&row.ManagedUnit,
+				&row.CurrentRevNo,
+				&row.StockQty,
+				&updatedAt,
+			); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if updatedAt.Valid {
+				row.UpdatedAt = updatedAt.String
+			}
+			out = append(out, row)
+		}
+		if err := rows.Err(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	}
+}
+
+func completeShipments(dbx *sql.DB) http.HandlerFunc {
+	type ShipmentReq struct {
+		ItemID int64   `json:"item_id"`
+		Qty    float64 `json:"qty"`
+	}
+	type Req struct {
+		Shipments []ShipmentReq `json:"shipments"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req Req
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if len(req.Shipments) == 0 {
+			http.Error(w, "shipments are required", http.StatusBadRequest)
+			return
+		}
+
+		merged := make(map[int64]float64, len(req.Shipments))
+		for _, row := range req.Shipments {
+			if row.ItemID <= 0 {
+				http.Error(w, "item_id must be > 0", http.StatusBadRequest)
+				return
+			}
+			if row.Qty <= 0 {
+				http.Error(w, "qty must be > 0", http.StatusBadRequest)
+				return
+			}
+			merged[row.ItemID] += row.Qty
+		}
+
+		tx, err := dbx.BeginTx(r.Context(), nil)
+		if err != nil {
+			http.Error(w, "failed to begin transaction", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		// deduction by item_id (assembly itself + bom children)
+		deductions := make(map[int64]float64)
+
+		for itemID, shipQty := range merged {
+			var itemType string
+			if err := tx.QueryRow(`SELECT item_type FROM items WHERE item_id = ?`, itemID).Scan(&itemType); err != nil {
+				if err == sql.ErrNoRows {
+					http.Error(w, fmt.Sprintf("item not found: %d", itemID), http.StatusBadRequest)
+					return
+				}
+				http.Error(w, "failed to load item", http.StatusInternalServerError)
+				return
+			}
+			if itemType != "assembly" {
+				http.Error(w, fmt.Sprintf("item must be assembly: %d", itemID), http.StatusBadRequest)
+				return
+			}
+
+			var recordID int64
+			if err := tx.QueryRow(`
+SELECT record_id
+FROM assembly_records
+WHERE item_id = ?
+ORDER BY rev_no DESC
+LIMIT 1
+`, itemID).Scan(&recordID); err != nil {
+				if err == sql.ErrNoRows {
+					http.Error(w, fmt.Sprintf("bom revision not found: %d", itemID), http.StatusBadRequest)
+					return
+				}
+				http.Error(w, "failed to load bom revision", http.StatusInternalServerError)
+				return
+			}
+
+			deductions[itemID] += shipQty
+
+			compRows, err := tx.Query(`
+SELECT component_item_id, qty_per_unit
+FROM assembly_components
+WHERE record_id = ?
+`, recordID)
+			if err != nil {
+				http.Error(w, "failed to load bom components", http.StatusInternalServerError)
+				return
+			}
+			for compRows.Next() {
+				var componentItemID int64
+				var qtyPerUnit float64
+				if err := compRows.Scan(&componentItemID, &qtyPerUnit); err != nil {
+					compRows.Close()
+					http.Error(w, "failed to scan bom components", http.StatusInternalServerError)
+					return
+				}
+				deductions[componentItemID] += shipQty * qtyPerUnit
+			}
+			if err := compRows.Err(); err != nil {
+				compRows.Close()
+				http.Error(w, "failed to read bom components", http.StatusInternalServerError)
+				return
+			}
+			if err := compRows.Close(); err != nil {
+				http.Error(w, "failed to close bom components", http.StatusInternalServerError)
+				return
+			}
+		}
+
+		for itemID, outQty := range deductions {
+			var stockManaged int
+			if err := tx.QueryRow(`SELECT stock_managed FROM items WHERE item_id = ?`, itemID).Scan(&stockManaged); err != nil {
+				http.Error(w, "failed to load stock setting", http.StatusInternalServerError)
+				return
+			}
+			if stockManaged == 0 {
+				continue
+			}
+
+			var currentStock float64
+			if err := tx.QueryRow(`
+SELECT COALESCE(SUM(
+  CASE WHEN transaction_type = 'OUT' THEN -qty ELSE qty END
+), 0)
+FROM stock_transactions
+WHERE item_id = ?
+`, itemID).Scan(&currentStock); err != nil {
+				http.Error(w, "failed to compute current stock", http.StatusInternalServerError)
+				return
+			}
+			if currentStock < outQty {
+				http.Error(
+					w,
+					fmt.Sprintf("insufficient stock: item_id=%d required=%.3f current=%.3f", itemID, outQty, currentStock),
+					http.StatusBadRequest,
+				)
+				return
+			}
+		}
+
+		for itemID, outQty := range deductions {
+			if outQty <= 0 {
+				continue
+			}
+			if _, err := tx.Exec(`
+INSERT INTO stock_transactions(item_id, qty, transaction_type, note)
+VALUES(?,?,?,?)
+`, itemID, outQty, "OUT", "shipment"); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "failed to commit transaction", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"shipment_count": len(merged),
+			"deducted_items": len(deductions),
+		})
+	}
+}
+
 func getAssemblyComponents(dbx *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		idStr := chi.URLParam(r, "id")
@@ -1043,8 +1761,8 @@ func getAssemblyComponents(dbx *sql.DB) http.HandlerFunc {
 			http.Error(w, "failed to load item", http.StatusInternalServerError)
 			return
 		}
-		if parentType != "assembly" {
-			http.Error(w, "item must be assembly", http.StatusBadRequest)
+		if parentType != "assembly" && parentType != "component" {
+			http.Error(w, "item must be assembly or component", http.StatusBadRequest)
 			return
 		}
 
@@ -1209,8 +1927,8 @@ func createAssemblyComponentsRevision(dbx *sql.DB) http.HandlerFunc {
 			http.Error(w, "failed to load item", http.StatusInternalServerError)
 			return
 		}
-		if parentType != "assembly" {
-			http.Error(w, "item must be assembly", http.StatusBadRequest)
+		if parentType != "assembly" && parentType != "component" {
+			http.Error(w, "item must be assembly or component", http.StatusBadRequest)
 			return
 		}
 		if len(req.Components) == 0 {
@@ -1324,8 +2042,8 @@ func deleteAssemblyComponentsRevision(dbx *sql.DB) http.HandlerFunc {
 			http.Error(w, "failed to load item", http.StatusInternalServerError)
 			return
 		}
-		if parentType != "assembly" {
-			http.Error(w, "item must be assembly", http.StatusBadRequest)
+		if parentType != "assembly" && parentType != "component" {
+			http.Error(w, "item must be assembly or component", http.StatusBadRequest)
 			return
 		}
 

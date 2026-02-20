@@ -5,6 +5,7 @@ export type Item = {
   name: string;
   item_type: "component" | "assembly";
   pack_qty?: number;
+  reorder_point?: number;
   managed_unit: "g" | "pcs";
   rev_code?: string;
   stock_managed: boolean;

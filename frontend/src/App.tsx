@@ -6,6 +6,8 @@ import AssemblyStockAdjustPage from "./pages/AssemblyStockAdjustPage";
 import CreateItemPage from "./pages/CreateItemPage";
 import HomePage from "./pages/HomePage";
 import ItemsPage from "./pages/ItemsPage";
+import PartsProductionPage from "./pages/PartsProductionPage";
+import ProductionShipmentsPage from "./pages/ProductionShipmentsPage";
 import type { Item } from "./types/item";
 
 export default function App() {
@@ -37,6 +39,8 @@ export default function App() {
         <Route path="/" element={<HomePage items={items} />} />
         <Route path="/items" element={<ItemsPage items={items} error={error} />} />
         <Route path="/items/new" element={<CreateItemPage />} />
+        <Route path="/production/parts" element={<PartsProductionPage />} />
+        <Route path="/production/shipments" element={<ProductionShipmentsPage />} />
         <Route path="/assemblies/builder" element={<AssemblyBuilderPage items={items} />} />
         <Route path="/assemblies/adjust" element={<AssemblyStockAdjustPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

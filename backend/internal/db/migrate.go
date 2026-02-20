@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 const pragmaFK = `PRAGMA foreign_keys = ON;`
@@ -26,6 +27,7 @@ CREATE TABLE IF NOT EXISTS items (
   is_final INTEGER NOT NULL DEFAULT 0 CHECK (is_final IN (0,1)),
   output_category TEXT,
   pack_qty REAL,
+  reorder_point REAL CHECK (reorder_point > 0),
   managed_unit TEXT NOT NULL CHECK (managed_unit IN ('g','pcs')),
   rev_code TEXT,
   note TEXT,
@@ -145,6 +147,43 @@ func Migrate(db *sql.DB) error {
 			return fmt.Errorf("migration failed at %s: %w", s.name, err)
 		}
 	}
+	if err := ensureItemsReorderPoint(db); err != nil {
+		return err
+	}
 
+	return nil
+}
+
+func ensureItemsReorderPoint(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(items);`)
+	if err != nil {
+		return fmt.Errorf("migration failed at pragma table_info(items): %w", err)
+	}
+	defer rows.Close()
+
+	hasReorderPoint := false
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &defaultValue, &pk); err != nil {
+			return fmt.Errorf("migration failed at scan table_info(items): %w", err)
+		}
+		if strings.EqualFold(name, "reorder_point") {
+			hasReorderPoint = true
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("migration failed at rows table_info(items): %w", err)
+	}
+	if hasReorderPoint {
+		return nil
+	}
+	if _, err := db.Exec(`ALTER TABLE items ADD COLUMN reorder_point REAL CHECK (reorder_point > 0);`); err != nil {
+		return fmt.Errorf("migration failed at add items.reorder_point: %w", err)
+	}
 	return nil
 }

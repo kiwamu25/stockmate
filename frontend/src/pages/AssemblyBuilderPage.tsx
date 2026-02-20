@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Item } from "../types/item";
+import { formatUtcTextToLocal } from "../utils/datetime";
 
 type AssemblyBuilderPageProps = {
   items: Item[];
 };
+
+type SidebarListType = "assembly" | "component";
 
 type SelectedComponent = {
   itemId: number;
@@ -39,9 +42,12 @@ type AssemblyComponentSet = {
   }>;
 };
 
-function formatDate(text?: string) {
-  if (!text) return "-";
-  return text.replace("T", " ");
+function isPartComponent(item: Item) {
+  return item.item_type === "component" && item.component?.component_type === "part";
+}
+
+function isAnyComponent(item: Item) {
+  return item.item_type === "component";
 }
 
 export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps) {
@@ -50,7 +56,7 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
     [items],
   );
 
-  const [selectedAssemblyId, setSelectedAssemblyId] = useState<number | null>(null);
+  const [selectedParentId, setSelectedParentId] = useState<number | null>(null);
   const [components, setComponents] = useState<SelectedComponent[]>([]);
   const [revisions, setRevisions] = useState<AssemblyRevision[]>([]);
   const [currentRevNo, setCurrentRevNo] = useState<number | null>(null);
@@ -63,15 +69,33 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
   const [message, setMessage] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [searchType, setSearchType] = useState<Item["item_type"]>("component");
+  const [sidebarListType, setSidebarListType] = useState<SidebarListType>("assembly");
   const [keyword, setKeyword] = useState("");
   const [searched, setSearched] = useState(false);
   const [results, setResults] = useState<Item[]>([]);
 
-  const selectedAssembly = useMemo(
-    () => assemblies.find((item) => item.id === selectedAssemblyId) ?? null,
-    [assemblies, selectedAssemblyId],
+  const selectedParent = useMemo(
+    () => items.find((item) => item.id === selectedParentId) ?? null,
+    [items, selectedParentId],
   );
+  const sidebarItems = useMemo(
+    () =>
+      sidebarListType === "assembly"
+        ? assemblies
+        : items.filter((item) => isPartComponent(item)),
+    [assemblies, items, sidebarListType],
+  );
+
+  useEffect(() => {
+    // Avoid updating a different parent item by mistake after switching list type.
+    setSelectedParentId(null);
+    setComponents([]);
+    setRevisions([]);
+    setCurrentRevNo(null);
+    setCurrentCreatedAt("");
+    setError("");
+    setMessage("");
+  }, [sidebarListType]);
 
   async function loadAssemblyData(assemblyId: number, revNo?: number) {
     const qp = revNo ? `?rev_no=${revNo}` : "";
@@ -96,7 +120,7 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
   }
 
   useEffect(() => {
-    if (!selectedAssemblyId) {
+    if (!selectedParentId) {
       setComponents([]);
       setRevisions([]);
       setCurrentRevNo(null);
@@ -108,28 +132,27 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
     setError("");
     setMessage("");
 
-    loadAssemblyData(selectedAssemblyId)
+    loadAssemblyData(selectedParentId)
       .catch((e) => {
         setError(e instanceof Error ? e.message : "failed to load components");
       })
       .finally(() => setLoading(false));
-  }, [selectedAssemblyId]);
+  }, [selectedParentId]);
 
   function openModal() {
     setModalOpen(true);
     setSearched(false);
     setResults([]);
     setKeyword("");
-    setSearchType("component");
   }
 
   function runSearch() {
     const q = keyword.trim().toLowerCase();
     const filtered = items
-      .filter((item) => item.item_type === searchType)
+      .filter((item) => isAnyComponent(item))
       .filter((item) => {
-        if (!selectedAssemblyId) return true;
-        return item.id !== selectedAssemblyId;
+        if (!selectedParentId) return true;
+        return item.id !== selectedParentId;
       })
       .filter((item) => {
         if (!q) return true;
@@ -142,6 +165,14 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
   }
 
   function selectItem(item: Item) {
+    if (!isAnyComponent(item)) {
+      setError("component のみ追加できます。");
+      return;
+    }
+    if (!selectedParentId) {
+      setError("先に左から対象アイテムを選択してください。");
+      return;
+    }
     setComponents((prev) => {
       const exists = prev.find((c) => c.itemId === item.id);
       if (exists) {
@@ -180,12 +211,12 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
   }
 
   async function selectRevision(revNo: number) {
-    if (!selectedAssemblyId) return;
+    if (!selectedParentId) return;
     setLoading(true);
     setError("");
     setMessage("");
     try {
-      await loadAssemblyData(selectedAssemblyId, revNo);
+      await loadAssemblyData(selectedParentId, revNo);
     } catch (e) {
       setError(e instanceof Error ? e.message : "failed to load revision");
     } finally {
@@ -197,8 +228,8 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
     setError("");
     setMessage("");
 
-    if (!selectedAssemblyId) {
-      setError("左のアセンブリを選択してください。");
+    if (!selectedParentId) {
+      setError("左から対象アイテムを選択してください。");
       return;
     }
 
@@ -228,7 +259,7 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
 
     setSaving(true);
     try {
-      const res = await fetch(`/api/assemblies/${selectedAssemblyId}/components`, {
+      const res = await fetch(`/api/assemblies/${selectedParentId}/components`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ components: payloadComponents }),
@@ -240,7 +271,7 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
 
       const body = (await res.json()) as { rev_no?: number };
       setMessage(`登録しました。rev ${body.rev_no ?? "-"}`);
-      await loadAssemblyData(selectedAssemblyId);
+      await loadAssemblyData(selectedParentId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "登録に失敗しました。");
     } finally {
@@ -249,7 +280,7 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
   }
 
   async function deleteCurrentRevision() {
-    if (!selectedAssemblyId || !currentRevNo) {
+    if (!selectedParentId || !currentRevNo) {
       setError("削除対象の revision がありません。");
       return;
     }
@@ -259,14 +290,14 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
     setError("");
     setMessage("");
     try {
-      const res = await fetch(`/api/assemblies/${selectedAssemblyId}/components/${currentRevNo}`, {
+      const res = await fetch(`/api/assemblies/${selectedParentId}/components/${currentRevNo}`, {
         method: "DELETE",
       });
       if (!res.ok) {
         throw new Error(await res.text());
       }
       setMessage(`rev ${currentRevNo} を削除しました。`);
-      await loadAssemblyData(selectedAssemblyId);
+      await loadAssemblyData(selectedParentId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "削除に失敗しました。");
     } finally {
@@ -287,25 +318,47 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
 
       <section className="mt-6 grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-gray-700">Assemblies</h2>
+          <h2 className="text-sm font-bold uppercase tracking-wide text-gray-700">Left List</h2>
+          <label className="mt-3 block text-xs font-semibold text-gray-700">
+            Type
+            <select
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              value={sidebarListType}
+              onChange={(e) => setSidebarListType(e.target.value as SidebarListType)}
+            >
+              <option value="assembly">assembly</option>
+              <option value="component">component</option>
+            </select>
+          </label>
+          <p className="mt-2 text-xs text-gray-500">
+            {sidebarListType === "assembly"
+              ? "assembly を選択してBOM編集対象を切り替えます。"
+              : "component(part) を選択してBOM編集対象を切り替えます。"}
+          </p>
           <div className="mt-3 max-h-[560px] space-y-2 overflow-auto pr-1">
-            {assemblies.map((item) => (
+            {sidebarItems.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setSelectedAssemblyId(item.id)}
-                className={`w-full rounded-xl border px-3 py-2 text-left transition ${
-                  selectedAssemblyId === item.id
+                onClick={() => {
+                  setSelectedParentId(item.id);
+                }}
+                className={`w-full rounded-xl border px-3 py-2 text-left transition ${selectedParentId === item.id
                     ? "border-amber-300 bg-amber-50"
                     : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                }`}
+                  }`}
               >
                 <p className="font-mono text-xs text-gray-500">{item.sku}</p>
                 <p className="text-sm font-semibold text-gray-900">{item.name}</p>
+                {sidebarListType === "component" && (
+                  <p className="text-xs text-gray-500">{item.component?.component_type ?? "-"}</p>
+                )}
               </button>
             ))}
-            {assemblies.length === 0 && (
-              <p className="text-sm text-gray-500">assembly がありません。</p>
+            {sidebarItems.length === 0 && (
+              <p className="text-sm text-gray-500">
+                {sidebarListType === "assembly" ? "assembly がありません。" : "component がありません。"}
+              </p>
             )}
           </div>
         </aside>
@@ -315,18 +368,20 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
             <div>
               <h2 className="text-lg font-black text-gray-900">Components</h2>
               <p className="text-xs text-gray-500">
-                {selectedAssembly
-                  ? `${selectedAssembly.sku} | ${selectedAssembly.name}`
-                  : "左からアセンブリを選択してください"}
+                {selectedParent
+                  ? `${selectedParent.sku} | ${selectedParent.name}`
+                  : "左から対象アイテムを選択してください"}
               </p>
               <p className="text-xs text-gray-500">
-                {currentRevNo ? `現在: rev ${currentRevNo} (${formatDate(currentCreatedAt)})` : "現在: rev なし"}
+                {currentRevNo
+                  ? `現在: rev ${currentRevNo} (${formatUtcTextToLocal(currentCreatedAt)})`
+                  : "現在: rev なし"}
               </p>
             </div>
             <div className="flex items-center gap-2">
               <select
                 value={currentRevNo ?? ""}
-                disabled={!selectedAssembly || revisions.length === 0 || loading}
+                disabled={!selectedParent || revisions.length === 0 || loading}
                 onChange={(e) => {
                   const value = Number(e.target.value);
                   if (Number.isFinite(value) && value > 0) {
@@ -338,26 +393,19 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
                 {revisions.length === 0 && <option value="">rev none</option>}
                 {revisions.map((rev) => (
                   <option key={rev.record_id} value={rev.rev_no}>
-                    rev {rev.rev_no} ({formatDate(rev.created_at)})
+                    rev {rev.rev_no} ({formatUtcTextToLocal(rev.created_at)})
                   </option>
                 ))}
               </select>
               <button
                 type="button"
                 onClick={deleteCurrentRevision}
-                disabled={!selectedAssembly || !currentRevNo || deleting || loading}
+                disabled={!selectedParent || !currentRevNo || deleting || loading}
                 className="rounded-full border border-red-300 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {deleting ? "削除中..." : "rev削除"}
               </button>
-              <button
-                type="button"
-                onClick={openModal}
-                disabled={!selectedAssembly}
-                className="rounded-full bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-              >
-                Add
-              </button>
+
             </div>
           </div>
 
@@ -431,8 +479,16 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
           <div className="mt-4 flex items-center gap-3">
             <button
               type="button"
+              onClick={openModal}
+              disabled={!selectedParent}
+              className="rounded-full bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            >
+              Component Add
+            </button>
+            <button
+              type="button"
               onClick={registerComponents}
-              disabled={saving || !selectedAssembly}
+              disabled={saving || !selectedParent}
               className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
             >
               {saving ? "登録中..." : "登録(RevUp)"}
@@ -459,23 +515,24 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_120px]">
-              <label className="text-xs font-semibold text-gray-700">
+              <div className="text-xs font-semibold text-gray-700">
                 Type
-                <select
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  value={searchType}
-                  onChange={(e) => setSearchType(e.target.value as Item["item_type"])}
-                >
-                  <option value="component">component</option>
-                  <option value="assembly">assembly</option>
-                </select>
-              </label>
+                <p className="mt-1 rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-700">
+                  component (part/material)
+                </p>
+              </div>
               <label className="text-xs font-semibold text-gray-700">
                 Keyword
                 <input
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      runSearch();
+                    }
+                  }}
                   placeholder="SKU or Name"
                 />
               </label>
@@ -503,6 +560,7 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
                   >
                     <p className="font-mono text-xs text-gray-500">{item.sku}</p>
                     <p className="text-sm font-semibold text-gray-900">{item.name}</p>
+                    <p className="text-xs text-gray-500">{item.component?.component_type ?? "-"}</p>
                   </button>
                 ))}
                 {results.length === 0 && (
