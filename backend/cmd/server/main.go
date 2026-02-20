@@ -102,6 +102,17 @@ type ProductionConsumption struct {
 	Qty           float64 `json:"qty"`
 }
 
+type ProductionComponent struct {
+	ItemID        int64    `json:"item_id"`
+	SKU           string   `json:"sku"`
+	Name          string   `json:"name"`
+	ManagedUnit   string   `json:"managed_unit"`
+	ComponentType string   `json:"component_type"`
+	PackQty       *float64 `json:"pack_qty,omitempty"`
+	StockQty      float64  `json:"stock_qty"`
+	UpdatedAt     string   `json:"updated_at,omitempty"`
+}
+
 type ShippingAssembly struct {
 	ItemID       int64   `json:"item_id"`
 	SKU          string  `json:"sku"`
@@ -175,6 +186,8 @@ func main() {
 	r.Post("/api/assemblies/{id}/adjust", adjustAssemblyStock(conn))
 	r.Get("/api/production/parts", listProductionParts(conn))
 	r.Post("/api/production/parts/{id}/complete", completePartProduction(conn))
+	r.Get("/api/production/components", listProductionComponents(conn))
+	r.Post("/api/production/components/complete", completeProductionComponents(conn))
 	r.Get("/api/production/shipments/assemblies", listShippingAssemblies(conn))
 	r.Post("/api/production/shipments/complete", completeShipments(conn))
 	r.Put("/api/items/{id}", updateItem(conn))
@@ -1481,6 +1494,182 @@ WHERE item_id = ?
 			"item_id":      itemID,
 			"stock_qty":    stockQty,
 			"consumptions": consumedList,
+		})
+	}
+}
+
+func listProductionComponents(dbx *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		limit := 200
+		if limitStr := strings.TrimSpace(r.URL.Query().Get("limit")); limitStr != "" {
+			v, err := strconv.Atoi(limitStr)
+			if err != nil || v <= 0 {
+				http.Error(w, "invalid limit", http.StatusBadRequest)
+				return
+			}
+			if v > 500 {
+				v = 500
+			}
+			limit = v
+		}
+
+		sb := strings.Builder{}
+		sb.WriteString(`
+SELECT
+  i.item_id,
+  i.sku,
+  i.name,
+  i.managed_unit,
+  i.pack_qty,
+  c.component_type,
+  COALESCE(st.stock_qty, 0) AS stock_qty,
+  st.updated_at
+FROM items i
+JOIN components c ON c.item_id = i.item_id
+LEFT JOIN (
+  SELECT
+    item_id,
+    COALESCE(SUM(
+      CASE WHEN transaction_type = 'OUT' THEN -qty ELSE qty END
+    ), 0) AS stock_qty,
+    MAX(created_at) AS updated_at
+  FROM stock_transactions
+  GROUP BY item_id
+) st ON st.item_id = i.item_id
+WHERE i.item_type = 'component'
+  AND c.component_type IN ('material', 'part')
+`)
+		args := make([]any, 0)
+		if q != "" {
+			sb.WriteString(" AND (i.sku LIKE ? OR i.name LIKE ?)")
+			like := "%" + q + "%"
+			args = append(args, like, like)
+		}
+		sb.WriteString(`
+ORDER BY i.item_id DESC
+LIMIT ?
+`)
+		args = append(args, limit)
+
+		rows, err := dbx.Query(sb.String(), args...)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		out := make([]ProductionComponent, 0)
+		for rows.Next() {
+			var row ProductionComponent
+			var packQty sql.NullFloat64
+			var updatedAt sql.NullString
+			if err := rows.Scan(
+				&row.ItemID,
+				&row.SKU,
+				&row.Name,
+				&row.ManagedUnit,
+				&packQty,
+				&row.ComponentType,
+				&row.StockQty,
+				&updatedAt,
+			); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if packQty.Valid {
+				pq := packQty.Float64
+				row.PackQty = &pq
+			}
+			if updatedAt.Valid {
+				row.UpdatedAt = updatedAt.String
+			}
+			out = append(out, row)
+		}
+		if err := rows.Err(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	}
+}
+
+func completeProductionComponents(dbx *sql.DB) http.HandlerFunc {
+	type StockInRow struct {
+		ItemID int64   `json:"item_id"`
+		Qty    float64 `json:"qty"`
+	}
+	type Req struct {
+		Rows []StockInRow `json:"rows"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req Req
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if len(req.Rows) == 0 {
+			http.Error(w, "rows are required", http.StatusBadRequest)
+			return
+		}
+
+		merged := make(map[int64]float64, len(req.Rows))
+		for _, row := range req.Rows {
+			if row.ItemID <= 0 {
+				http.Error(w, "item_id must be > 0", http.StatusBadRequest)
+				return
+			}
+			if row.Qty <= 0 {
+				http.Error(w, "qty must be > 0", http.StatusBadRequest)
+				return
+			}
+			merged[row.ItemID] += row.Qty
+		}
+
+		tx, err := dbx.BeginTx(r.Context(), nil)
+		if err != nil {
+			http.Error(w, "failed to begin transaction", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		for itemID, qty := range merged {
+			var count int
+			if err := tx.QueryRow(`
+SELECT COUNT(1)
+FROM items i
+JOIN components c ON c.item_id = i.item_id
+WHERE i.item_id = ?
+  AND i.item_type = 'component'
+  AND c.component_type IN ('material','part')
+`, itemID).Scan(&count); err != nil {
+				http.Error(w, "failed to validate item", http.StatusInternalServerError)
+				return
+			}
+			if count == 0 {
+				http.Error(w, fmt.Sprintf("item must be component(material/part): %d", itemID), http.StatusBadRequest)
+				return
+			}
+			if _, err := tx.Exec(`
+INSERT INTO stock_transactions(item_id, qty, transaction_type, note)
+VALUES(?,?,?,?)
+`, itemID, qty, "IN", "component stock in"); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "failed to commit transaction", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"completed_count": len(merged),
 		})
 	}
 }

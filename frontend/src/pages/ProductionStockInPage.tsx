@@ -3,25 +3,26 @@ import type { FormEvent } from "react";
 import NumericStepper from "../components/NumericStepper";
 import { formatUtcTextToLocal } from "../utils/datetime";
 
-type ShippingAssembly = {
+type ProductionComponent = {
   item_id: number;
   sku: string;
   name: string;
   managed_unit: "pcs" | "g";
-  current_rev_no: number;
+  component_type: "material" | "part";
+  pack_qty?: number;
   stock_qty: number;
   updated_at?: string;
 };
 
-export default function ProductionShipmentsPage() {
+export default function ProductionStockInPage() {
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState("");
   const [actionError, setActionError] = useState("");
   const [resultMsg, setResultMsg] = useState("");
-  const [rows, setRows] = useState<ShippingAssembly[]>([]);
-  const [qtyById, setQtyById] = useState<Record<number, string>>({});
+  const [rows, setRows] = useState<ProductionComponent[]>([]);
+  const [qtyByID, setQtyByID] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
 
   function parseQty(text: string): number {
@@ -35,16 +36,18 @@ export default function ProductionShipmentsPage() {
     setLoading(true);
     setFetchError("");
     const qp = q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
-    fetch(`/api/production/shipments/assemblies${qp}`, { signal: controller.signal })
+    fetch(`/api/production/components${qp}`, { signal: controller.signal })
       .then((res) => {
-        if (!res.ok) throw new Error("failed to load shipping assemblies");
+        if (!res.ok) throw new Error("failed to load components");
         return res.json();
       })
-      .then((data: ShippingAssembly[]) => {
+      .then((data: ProductionComponent[]) => {
         setRows(data);
-        setQtyById((prev) => {
+        setQtyByID((prev) => {
           const next: Record<number, string> = {};
-          for (const item of data) next[item.item_id] = prev[item.item_id] ?? "0";
+          for (const row of data) {
+            next[row.item_id] = prev[row.item_id] ?? "0";
+          }
           return next;
         });
       })
@@ -62,15 +65,27 @@ export default function ProductionShipmentsPage() {
     setQ(qInput);
   }
 
+  function adjustByPack(item: ProductionComponent, sign: 1 | -1) {
+    const packQty = item.pack_qty ?? 0;
+    if (!Number.isFinite(packQty) || packQty <= 0) return;
+    setQtyByID((prev) => {
+      const current = Number(prev[item.item_id] ?? "0");
+      const base = Number.isFinite(current) && current > 0 ? current : 0;
+      const next = Math.max(0, base + sign * packQty);
+      return { ...prev, [item.item_id]: String(next) };
+    });
+  }
+
   const targets = rows
-    .map((item) => ({
-      item_id: item.item_id,
-      sku: item.sku,
-      qty: parseQty(qtyById[item.item_id] ?? "0"),
+    .map((row) => ({
+      item_id: row.item_id,
+      qty: parseQty(qtyByID[row.item_id] ?? "0"),
     }))
     .filter((row) => row.qty > 0);
 
-  async function completeShipmentBatch() {
+  const totalQty = targets.reduce((sum, row) => sum + row.qty, 0);
+
+  async function completeStockIn() {
     if (targets.length === 0) {
       setActionError("数量が 0 以外の行がありません。");
       return;
@@ -79,18 +94,20 @@ export default function ProductionShipmentsPage() {
     setActionError("");
     setResultMsg("");
     try {
-      const res = await fetch("/api/production/shipments/complete", {
+      const res = await fetch("/api/production/components/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shipments: targets.map((t) => ({ item_id: t.item_id, qty: t.qty })) }),
+        body: JSON.stringify({ rows: targets }),
       });
-      if (!res.ok) throw new Error((await res.text()) || "failed to complete shipments");
-      setQtyById((prev) => {
+      if (!res.ok) throw new Error((await res.text()) || "failed to stock in");
+      setQtyByID((prev) => {
         const next = { ...prev };
-        for (const row of targets) next[row.item_id] = "0";
+        for (const row of targets) {
+          next[row.item_id] = "0";
+        }
         return next;
       });
-      setResultMsg(`出荷完了: ${targets.length}件`);
+      setResultMsg(`入庫完了: ${targets.length}件`);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "API error");
     } finally {
@@ -102,9 +119,9 @@ export default function ProductionShipmentsPage() {
     <main className="mx-auto w-full max-w-7xl px-4 py-10 pb-28 md:px-6">
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
-          <h1 className="text-xl font-black text-gray-900">Shipping</h1>
+          <h1 className="text-xl font-black text-gray-900">Stock In</h1>
           <p className="mt-1 text-xs text-gray-500">
-            assembly をまとめて出荷し、BOM通りに在庫を減算します。
+            material / part の単純入庫をまとめて実行します。
           </p>
         </div>
 
@@ -130,7 +147,7 @@ export default function ProductionShipmentsPage() {
         {loading && <p className="px-6 pb-4 text-sm text-gray-500">Loading...</p>}
 
         {!loading && rows.length === 0 ? (
-          <p className="px-6 py-8 text-sm text-gray-500">出荷対象の assembly はまだありません。</p>
+          <p className="px-6 py-8 text-sm text-gray-500">material / part がまだありません。</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse">
@@ -138,30 +155,53 @@ export default function ProductionShipmentsPage() {
                 <tr className="bg-gray-100 text-left text-xs uppercase tracking-wider text-gray-600">
                   <th className="p-3">SKU</th>
                   <th className="p-3">Name</th>
-                  <th className="p-3">Rev</th>
+                  <th className="p-3">Type</th>
                   <th className="p-3">Stock</th>
                   <th className="p-3">Updated</th>
-                  <th className="p-3">出荷数</th>
+                  <th className="p-3">入庫数</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((item) => (
-                  <tr key={item.item_id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="p-3 font-mono text-sm text-gray-900">{item.sku}</td>
-                    <td className="p-3 text-sm text-gray-900">{item.name}</td>
-                    <td className="p-3 text-sm text-gray-700">r{item.current_rev_no}</td>
-                    <td className="p-3 text-sm text-gray-700">{item.stock_qty} {item.managed_unit}</td>
-                    <td className="p-3 text-sm text-gray-700">{formatUtcTextToLocal(item.updated_at)}</td>
+                {rows.map((row) => (
+                  <tr key={row.item_id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="p-3 font-mono text-sm text-gray-900">{row.sku}</td>
+                    <td className="p-3 text-sm text-gray-900">{row.name}</td>
+                    <td className="p-3 text-sm text-gray-700">component({row.component_type})</td>
+                    <td className="p-3 text-sm text-gray-700">{row.stock_qty} {row.managed_unit}</td>
+                    <td className="p-3 text-sm text-gray-700">{formatUtcTextToLocal(row.updated_at)}</td>
                     <td className="p-3">
-                      <NumericStepper
-                        value={qtyById[item.item_id] ?? "0"}
-                        onChange={(next) =>
-                          setQtyById((prev) => ({ ...prev, [item.item_id]: next }))
-                        }
-                        min={0}
-                        step={1}
-                        disabled={saving}
-                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => adjustByPack(row, -1)}
+                          className="h-11 rounded-full border border-gray-300 px-3 text-xs font-bold text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                          disabled={saving || !row.pack_qty || row.pack_qty <= 0}
+                          title="pack -"
+                        >
+                          pack-
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => adjustByPack(row, 1)}
+                          className="h-11 rounded-full border border-gray-300 px-3 text-xs font-bold text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                          disabled={saving || !row.pack_qty || row.pack_qty <= 0}
+                          title="pack +"
+                        >
+                          pack+
+                        </button>
+                        <NumericStepper
+                          value={qtyByID[row.item_id] ?? "0"}
+                          onChange={(next) =>
+                            setQtyByID((prev) => ({ ...prev, [row.item_id]: next }))
+                          }
+                          min={0}
+                          step={1}
+                          disabled={saving}
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        1 pack = {row.pack_qty ?? 0} {row.managed_unit}
+                      </p>
                     </td>
                   </tr>
                 ))}
@@ -183,15 +223,16 @@ export default function ProductionShipmentsPage() {
       <div className="fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-3 md:px-6">
           <p className="text-sm text-gray-700">
-            対象: <span className="font-bold">{targets.length}</span>件
+            対象: <span className="font-bold">{targets.length}</span>件 / 合計:{" "}
+            <span className="font-bold">{totalQty}</span>
           </p>
           <button
             type="button"
-            onClick={completeShipmentBatch}
+            onClick={completeStockIn}
             disabled={saving || targets.length === 0}
-            className="rounded-full bg-rose-700 px-5 py-2 text-sm font-bold text-white hover:bg-rose-800 disabled:opacity-50"
+            className="rounded-full bg-emerald-700 px-5 py-2 text-sm font-bold text-white hover:bg-emerald-800 disabled:opacity-50"
           >
-            {saving ? "処理中..." : "出荷実行"}
+            {saving ? "処理中..." : "入庫実行"}
           </button>
         </div>
       </div>

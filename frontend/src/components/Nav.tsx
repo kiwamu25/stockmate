@@ -34,6 +34,7 @@ export default function Nav() {
       key: "production",
       label: "Production",
       links: [
+        { to: "/production/stock-in", label: "Stock In" },
         { to: "/production/parts", label: "Parts" },
         { to: "/production/shipments", label: "Shipping" },
       ],

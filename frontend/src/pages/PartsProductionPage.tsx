@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import NumericStepper from "../components/NumericStepper";
 import { formatUtcTextToLocal } from "../utils/datetime";
 
 type ProductionPart = {
@@ -72,15 +73,6 @@ export default function PartsProductionPage() {
   function onSearch(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setQ(qInput);
-  }
-
-  function adjustQty(itemID: number, delta: number) {
-    setQtyById((prev) => {
-      const current = Number(prev[itemID] ?? "0");
-      const base = Number.isFinite(current) && current > 0 ? current : 0;
-      const next = Math.max(0, base + delta);
-      return { ...prev, [itemID]: String(next) };
-    });
   }
 
   const targets = parts
@@ -218,35 +210,15 @@ export default function PartsProductionPage() {
                     </td>
                     <td className="p-3 text-sm text-gray-700">{formatUtcTextToLocal(item.updated_at)}</td>
                     <td className="p-3">
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => adjustQty(item.item_id, -1)}
-                          className="h-11 w-11 rounded-full border border-gray-300 text-2xl font-bold text-gray-700 hover:bg-gray-100"
-                          disabled={saving}
-                        >
-                          -
-                        </button>
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={qtyById[item.item_id] ?? "0"}
-                          onChange={(e) =>
-                            setQtyById((prev) => ({ ...prev, [item.item_id]: e.target.value }))
-                          }
-                          className="h-10 w-24 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                          disabled={saving}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => adjustQty(item.item_id, 1)}
-                          className="h-11 w-11 rounded-full border border-gray-300 text-2xl font-bold text-gray-700 hover:bg-gray-100"
-                          disabled={saving}
-                        >
-                          +
-                        </button>
-                      </div>
+                      <NumericStepper
+                        value={qtyById[item.item_id] ?? "0"}
+                        onChange={(next) =>
+                          setQtyById((prev) => ({ ...prev, [item.item_id]: next }))
+                        }
+                        min={0}
+                        step={1}
+                        disabled={saving}
+                      />
                     </td>
                   </tr>
                 ))}
