@@ -29,6 +29,8 @@ type EditForm = {
 
 export default function ItemsPage({ items, error }: ItemsPageProps) {
   const [localItems, setLocalItems] = useState<Item[]>(items);
+  const [keyword, setKeyword] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | "assembly" | "material" | "part">("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -62,6 +64,24 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
     () => localItems.find((item) => item.id === selectedId) ?? null,
     [localItems, selectedId],
   );
+
+  const filteredItems = useMemo(() => {
+    const q = keyword.trim().toLowerCase();
+    return localItems.filter((item) => {
+      if (typeFilter === "assembly" && item.item_type !== "assembly") return false;
+      if (typeFilter === "material") {
+        if (item.item_type !== "component") return false;
+        if ((item.component?.component_type ?? "material") !== "material") return false;
+      }
+      if (typeFilter === "part") {
+        if (item.item_type !== "component") return false;
+        if (item.component?.component_type !== "part") return false;
+      }
+
+      if (!q) return true;
+      return item.sku.toLowerCase().includes(q) || item.name.toLowerCase().includes(q);
+    });
+  }, [keyword, localItems, typeFilter]);
 
   function selectItem(id: number) {
     setSelectedId((prev) => (prev === id ? null : id));
@@ -216,6 +236,32 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
           <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
             <h1 className="text-xl font-black text-gray-900">Items</h1>
             <p className="mt-1 text-xs text-gray-500">Click a row to open detail editor.</p>
+            <div className="mt-3 flex flex-wrap gap-3">
+              <label className="text-xs font-semibold text-gray-700">
+                Keyword
+                <input
+                  className="mt-1 w-64 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal"
+                  value={keyword}
+                  onChange={(e) => setKeyword(e.target.value)}
+                  placeholder="sku / name"
+                />
+              </label>
+              <label className="text-xs font-semibold text-gray-700">
+                Type
+                <select
+                  className="mt-1 w-52 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal"
+                  value={typeFilter}
+                  onChange={(e) =>
+                    setTypeFilter(e.target.value as "all" | "assembly" | "material" | "part")
+                  }
+                >
+                  <option value="all">all</option>
+                  <option value="assembly">assembly</option>
+                  <option value="material">material</option>
+                  <option value="part">part</option>
+                </select>
+              </label>
+            </div>
           </div>
 
           {error && (
@@ -224,7 +270,7 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
             </div>
           )}
 
-          {localItems.length === 0 ? (
+          {filteredItems.length === 0 ? (
             <p className="px-6 py-8 text-gray-500">No items yet.</p>
           ) : (
             <div className="overflow-x-auto">
@@ -242,7 +288,7 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {localItems.map((item) => (
+                  {filteredItems.map((item) => (
                     <tr
                       key={item.id}
                       onClick={() => selectItem(item.id)}

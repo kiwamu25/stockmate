@@ -19,6 +19,11 @@ type StockSummaryRow = {
   updated_at?: string;
 };
 
+type StockSummaryWithReorder = StockSummaryRow & {
+  reorder_point: number;
+  reorder_gap: number;
+};
+
 export default function HomePage({ items }: HomePageProps) {
   const [stockRows, setStockRows] = useState<StockSummaryRow[]>([]);
   const [stockLoading, setStockLoading] = useState(false);
@@ -45,22 +50,41 @@ export default function HomePage({ items }: HomePageProps) {
     { label: "Final", value: counts.final },
   ];
 
-  const filteredStockRows = useMemo(() => {
-    switch (stockTypeFilter) {
-      case "assembly":
-        return stockRows.filter((row) => row.item_type === "assembly");
-      case "component_material":
-        return stockRows.filter(
-          (row) => row.item_type === "component" && (row.component_type ?? "material") === "material",
-        );
-      case "component_part":
-        return stockRows.filter(
-          (row) => row.item_type === "component" && row.component_type === "part",
-        );
-      default:
-        return stockRows;
-    }
-  }, [stockRows, stockTypeFilter]);
+  const filteredStockRows = useMemo<StockSummaryWithReorder[]>(() => {
+    const reorderPointMap = new Map(items.map((item) => [item.id, item.reorder_point ?? 0]));
+
+    const rowsWithReorder = stockRows
+      .map((row) => {
+        const reorderPoint = reorderPointMap.get(row.item_id) ?? 0;
+        return {
+          ...row,
+          reorder_point: reorderPoint,
+          reorder_gap: row.stock_qty - reorderPoint,
+        };
+      });
+
+    const typedRows = rowsWithReorder.filter((row) => {
+      switch (stockTypeFilter) {
+        case "assembly":
+          return row.item_type === "assembly";
+        case "component_material":
+          return row.item_type === "component" && (row.component_type ?? "material") === "material";
+        case "component_part":
+          return row.item_type === "component" && row.component_type === "part";
+        default:
+          return true;
+      }
+    });
+
+    return typedRows.sort((a, b) => {
+      const aIsZero = a.reorder_point === 0;
+      const bIsZero = b.reorder_point === 0;
+      if (aIsZero !== bIsZero) return aIsZero ? 1 : -1;
+      if (a.reorder_gap !== b.reorder_gap) return a.reorder_gap - b.reorder_gap;
+      if (a.stock_qty !== b.stock_qty) return a.stock_qty - b.stock_qty;
+      return a.item_id - b.item_id;
+    });
+  }, [items, stockRows, stockTypeFilter]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -166,23 +190,32 @@ export default function HomePage({ items }: HomePageProps) {
                   <th className="p-3">Name</th>
                   <th className="p-3">Type</th>
                   <th className="p-3">Qty</th>
-                  <th className="p-3">Unit</th>
+                  <th className="p-3">Reorder Point</th>
                   <th className="p-3">Updated</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredStockRows.map((row) => (
-                  <tr key={row.item_id} className="border-b border-gray-100">
-                    <td className="p-3 font-mono text-sm text-gray-900">{row.sku}</td>
-                    <td className="p-3 text-sm text-gray-900">{row.name}</td>
-                    <td className="p-3 text-sm text-gray-700">
+                  <tr
+                    key={row.item_id}
+                    className={`border-b border-gray-100 ${
+                      row.reorder_gap < 0 ? "bg-red-300 text-gray-900" : "text-gray-900"
+                    }`}
+                  >
+                    <td className="p-3 font-mono text-sm">{row.sku}</td>
+                    <td className="p-3 text-sm">{row.name}</td>
+                    <td className="p-3 text-sm">
                       {row.item_type === "component"
                         ? `component(${row.component_type || "material"})`
                         : "assembly"}
                     </td>
-                    <td className="p-3 text-sm text-gray-900">{row.stock_qty}</td>
-                    <td className="p-3 text-sm text-gray-700">{row.managed_unit}</td>
-                    <td className="p-3 text-sm text-gray-700">{formatUtcTextToLocal(row.updated_at)}</td>
+                    <td className="p-3 text-sm">
+                      {row.stock_qty} {row.managed_unit}
+                    </td>
+                    <td className="p-3 text-sm">
+                      {row.reorder_point} {row.managed_unit}
+                    </td>
+                    <td className="p-3 text-sm">{formatUtcTextToLocal(row.updated_at)}</td>
                   </tr>
                 ))}
               </tbody>
