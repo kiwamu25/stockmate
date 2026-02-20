@@ -80,3 +80,6 @@ Compose default:
 - 現在の migration は legacy 互換処理を削除しており、最新スキーマ前提です。
 - 旧スキーマDBを使っている場合は DB ファイルを削除して再作成してください。
   - 例: `data/stockmate.db` または `data/app.db`
+
+## License
+- MIT License (`LICENSE`)
