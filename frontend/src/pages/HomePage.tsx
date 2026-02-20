@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import FilterBar from "../components/FilterBar";
 import type { Item } from "../types/item";
 import { formatUtcTextToLocal } from "../utils/datetime";
 
@@ -151,23 +152,20 @@ export default function HomePage({ items }: HomePageProps) {
               <h2 className="text-lg font-bold text-gray-900">Stock List</h2>
               <p className="mt-1 text-xs text-gray-500">管理対象（stock managed = true）のみ表示</p>
             </div>
-            <label className="text-xs font-semibold text-gray-700">
-              Type
-              <select
-                className="mt-1 w-52 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-                value={stockTypeFilter}
-                onChange={(e) =>
-                  setStockTypeFilter(
-                    e.target.value as "all" | "assembly" | "component_material" | "component_part",
-                  )
-                }
-              >
-                <option value="all">all</option>
-                <option value="assembly">assembly</option>
-                <option value="component_material">component(material)</option>
-                <option value="component_part">component(part)</option>
-              </select>
-            </label>
+            <FilterBar
+              typeValue={stockTypeFilter}
+              onTypeChange={(value) =>
+                setStockTypeFilter(
+                  value as "all" | "assembly" | "component_material" | "component_part",
+                )
+              }
+              typeOptions={[
+                { value: "all", label: "all" },
+                { value: "assembly", label: "assembly" },
+                { value: "component_material", label: "component(material)" },
+                { value: "component_part", label: "component(part)" },
+              ]}
+            />
           </div>
         </div>
 

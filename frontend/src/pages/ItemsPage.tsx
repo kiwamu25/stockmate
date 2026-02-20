@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import FilterBar from "../components/FilterBar";
 import type { Item } from "../types/item";
 
 type ItemsPageProps = {
@@ -236,31 +237,20 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
           <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
             <h1 className="text-xl font-black text-gray-900">Items</h1>
             <p className="mt-1 text-xs text-gray-500">Click a row to open detail editor.</p>
-            <div className="mt-3 flex flex-wrap gap-3">
-              <label className="text-xs font-semibold text-gray-700">
-                Keyword
-                <input
-                  className="mt-1 w-64 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal"
-                  value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
-                  placeholder="sku / name"
-                />
-              </label>
-              <label className="text-xs font-semibold text-gray-700">
-                Type
-                <select
-                  className="mt-1 w-52 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal"
-                  value={typeFilter}
-                  onChange={(e) =>
-                    setTypeFilter(e.target.value as "all" | "assembly" | "material" | "part")
-                  }
-                >
-                  <option value="all">all</option>
-                  <option value="assembly">assembly</option>
-                  <option value="material">material</option>
-                  <option value="part">part</option>
-                </select>
-              </label>
+            <div className="mt-3">
+              <FilterBar
+                keywordValue={keyword}
+                onKeywordChange={setKeyword}
+                keywordPlaceholder="sku / name"
+                typeValue={typeFilter}
+                onTypeChange={(value) => setTypeFilter(value as "all" | "assembly" | "material" | "part")}
+                typeOptions={[
+                  { value: "all", label: "all" },
+                  { value: "assembly", label: "assembly" },
+                  { value: "material", label: "material" },
+                  { value: "part", label: "part" },
+                ]}
+              />
             </div>
           </div>
 
