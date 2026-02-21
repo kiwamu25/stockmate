@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
 export default function Nav() {
@@ -9,6 +9,7 @@ export default function Nav() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const navRootRef = useRef<HTMLElement | null>(null);
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `rounded-lg px-3 py-2 text-sm font-semibold transition ${
       isActive
@@ -54,8 +55,24 @@ export default function Nav() {
     setOpenGroup(null);
   }, [location.pathname]);
 
+  useEffect(() => {
+    function onPointerDown(event: MouseEvent | TouchEvent) {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (navRootRef.current?.contains(target)) return;
+      setMenuOpen(false);
+      setOpenGroup(null);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+    };
+  }, []);
+
   return (
-    <header className="sticky top-0 z-10 border-b border-white/20 bg-gray-900/95 backdrop-blur">
+    <header ref={navRootRef} className="sticky top-0 z-10 border-b border-white/20 bg-gray-900/95 backdrop-blur">
       <div className="mx-auto w-full max-w-6xl px-4 py-3 md:px-6">
         <div className="relative flex items-center justify-center sm:justify-between">
           <button

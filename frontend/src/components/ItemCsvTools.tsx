@@ -61,9 +61,12 @@ const TYPE_REQUIRED_HEADERS: Record<ItemType, string[]> = {
 const TYPE_TEMPLATE_HEADERS: Record<ItemType, string[]> = {
   component: [
     ...TYPE_REQUIRED_HEADERS.component,
-    "purchase_url_1",
-    "purchase_url_2",
-    "purchase_url_3",
+    "link_name-1",
+    "link_url-1",
+    "link_name-2",
+    "link_url-2",
+    "link_name-3",
+    "link_url-3",
   ],
   assembly: TYPE_REQUIRED_HEADERS.assembly,
 };
@@ -83,8 +86,11 @@ const TEMPLATE_ROWS: Record<ItemType, string[][]> = {
       "Generic",
       "part",
       "",
+      "Amazon",
       "https://example.com/items/m3-nut",
+      "MonotaRO",
       "https://shop.example.net/products/m3-nut",
+      "Rakuten",
       "https://store.example.org/m3-nut",
     ],
     [
@@ -100,8 +106,11 @@ const TEMPLATE_ROWS: Record<ItemType, string[][]> = {
       "Generic",
       "consumable",
       "",
+      "Bambu Store",
       "https://example.com/items/nozzle-cleaner",
+      "Amazon",
       "https://shop.example.net/products/nozzle-cleaner",
+      "",
       "",
     ],
   ],
@@ -226,12 +235,12 @@ function parseComponentType(text: string): "material" | "part" | "consumable" {
 }
 
 function collectPurchaseLinks(rowMap: Record<string, string>): Array<{ url: string }> {
-  const keys = ["purchase_url_1", "purchase_url_2", "purchase_url_3"];
-  const out: Array<{ url: string }> = [];
-  for (const key of keys) {
-    const url = (rowMap[key] ?? "").trim();
+  const out: Array<{ url: string; label?: string }> = [];
+  for (let i = 1; i <= 3; i += 1) {
+    const url = (rowMap[`link_url-${i}`] ?? rowMap[`purchase_url_${i}`] ?? "").trim();
     if (url === "") continue;
-    out.push({ url });
+    const label = (rowMap[`link_name-${i}`] ?? "").trim();
+    out.push({ url, label: label || undefined });
   }
   return out;
 }

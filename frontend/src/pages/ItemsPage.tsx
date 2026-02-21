@@ -7,6 +7,11 @@ type ItemsPageProps = {
   error: string;
 };
 
+type ComponentPurchaseLinkEditRow = {
+  url: string;
+  label: string;
+};
+
 type EditForm = {
   sku: string;
   name: string;
@@ -24,7 +29,7 @@ type EditForm = {
   component_manufacturer: string;
   component_type: ComponentType;
   component_color: string;
-  component_purchase_urls: string[];
+  component_purchase_links: ComponentPurchaseLinkEditRow[];
 };
 
 export default function ItemsPage({ items, error }: ItemsPageProps) {
@@ -52,7 +57,7 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
     component_manufacturer: "",
     component_type: "material",
     component_color: "",
-    component_purchase_urls: [],
+    component_purchase_links: [],
   });
 
   useEffect(() => {
@@ -110,8 +115,13 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
       component_manufacturer: item.component?.manufacturer ?? "",
       component_type: item.component?.component_type ?? "material",
       component_color: item.component?.color ?? "",
-      component_purchase_urls:
-        item.component?.purchase_links?.map((link) => link.url).filter((url) => url.trim() !== "") ?? [],
+      component_purchase_links:
+        item.component?.purchase_links
+          ?.filter((link) => link.url.trim() !== "")
+          .map((link) => ({
+            url: link.url,
+            label: link.label ?? "",
+          })) ?? [],
     });
     setSaveError("");
     setEditing(true);
@@ -169,10 +179,12 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
         note: editForm.assembly_note.trim(),
       };
     } else if (selectedItem.item_type === "component") {
-      const purchaseLinks = editForm.component_purchase_urls
-        .map((url) => url.trim())
-        .filter((url) => url !== "")
-        .map((url) => ({ url }));
+      const purchaseLinks = editForm.component_purchase_links
+        .map((link) => ({
+          url: link.url.trim(),
+          label: link.label.trim(),
+        }))
+        .filter((link) => link.url !== "");
       payload.component = {
         manufacturer: editForm.component_manufacturer.trim(),
         component_type: editForm.component_type,
@@ -220,8 +232,13 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                     manufacturer: editForm.component_manufacturer.trim() || undefined,
                     component_type: editForm.component_type,
                     color: editForm.component_color.trim() || undefined,
-                    purchase_links: editForm.component_purchase_urls
-                      .map((url, idx) => ({ url: url.trim(), sort_order: idx, enabled: true }))
+                    purchase_links: editForm.component_purchase_links
+                      .map((link, idx) => ({
+                        url: link.url.trim(),
+                        label: link.label.trim() || undefined,
+                        sort_order: idx,
+                        enabled: true,
+                      }))
                       .filter((row) => row.url !== ""),
                   }
                 : item.component,
@@ -525,16 +542,28 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                 Purchase URLs
                 {editing ? (
                   <div className="mt-2 space-y-2">
-                    {editForm.component_purchase_urls.map((url, idx) => (
-                      <div key={`${idx}-${url}`} className="flex items-center gap-2">
+                    {editForm.component_purchase_links.map((link, idx) => (
+                      <div key={idx} className="grid gap-2 md:grid-cols-[160px_minmax(0,1fr)_auto]">
                         <input
                           className="w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                          value={url}
+                          value={link.label}
                           onChange={(e) =>
                             setEditForm((f) => {
-                              const next = [...f.component_purchase_urls];
-                              next[idx] = e.target.value;
-                              return { ...f, component_purchase_urls: next };
+                              const next = [...f.component_purchase_links];
+                              next[idx] = { ...next[idx], label: e.target.value };
+                              return { ...f, component_purchase_links: next };
+                            })
+                          }
+                          placeholder="Link name"
+                        />
+                        <input
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+                          value={link.url}
+                          onChange={(e) =>
+                            setEditForm((f) => {
+                              const next = [...f.component_purchase_links];
+                              next[idx] = { ...next[idx], url: e.target.value };
+                              return { ...f, component_purchase_links: next };
                             })
                           }
                           placeholder="https://..."
@@ -545,7 +574,7 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                           onClick={() =>
                             setEditForm((f) => ({
                               ...f,
-                              component_purchase_urls: f.component_purchase_urls.filter((_, i) => i !== idx),
+                              component_purchase_links: f.component_purchase_links.filter((_, i) => i !== idx),
                             }))
                           }
                         >
@@ -560,7 +589,7 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                         onClick={() =>
                           setEditForm((f) => ({
                             ...f,
-                            component_purchase_urls: [...f.component_purchase_urls, ""],
+                            component_purchase_links: [...f.component_purchase_links, { url: "", label: "" }],
                           }))
                         }
                       >
@@ -579,7 +608,7 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                           rel="noreferrer"
                           className="block break-all text-blue-700 underline"
                         >
-                          {link.url}
+                          {link.label?.trim() ? `${link.label} - ${link.url}` : link.url}
                         </a>
                       ))
                     ) : (

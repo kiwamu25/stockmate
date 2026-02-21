@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import FilterBar from "../components/FilterBar";
 import type { Item } from "../types/item";
 import { formatUtcTextToLocal } from "../utils/datetime";
@@ -14,6 +13,7 @@ type StockSummaryRow = {
   name: string;
   item_type: "component" | "assembly";
   component_type?: "part" | "material" | "consumable";
+  purchase_url?: string;
   managed_unit: "pcs" | "g";
   stock_managed: boolean;
   stock_qty: number;
@@ -23,36 +23,33 @@ type StockSummaryRow = {
 type StockSummaryWithReorder = StockSummaryRow & {
   reorder_point: number;
   reorder_gap: number;
+  purchase_links: Array<{
+    id?: number;
+    url: string;
+    label?: string;
+    enabled: boolean;
+  }>;
 };
 
 export default function HomePage({ items }: HomePageProps) {
   const [stockRows, setStockRows] = useState<StockSummaryRow[]>([]);
   const [stockLoading, setStockLoading] = useState(false);
   const [stockError, setStockError] = useState("");
+  const [openLinksItemID, setOpenLinksItemID] = useState<number | null>(null);
   const [stockTypeFilter, setStockTypeFilter] = useState<
     "all" | "assembly" | "component_material" | "component_part" | "component_consumable"
   >("all");
 
-  const counts = useMemo(() => {
-    const base = { component: 0, assembly: 0, sellable: 0, final: 0 };
-    for (const item of items) {
-      base[item.item_type] += 1;
-      if (item.is_sellable) base.sellable += 1;
-      if (item.is_final) base.final += 1;
-    }
-    return base;
-  }, [items]);
-
-  const cards = [
-    { label: "Total Items", value: items.length },
-    { label: "Components", value: counts.component },
-    { label: "Assemblies", value: counts.assembly },
-    { label: "Sellable", value: counts.sellable },
-    { label: "Final", value: counts.final },
-  ];
-
   const filteredStockRows = useMemo<StockSummaryWithReorder[]>(() => {
     const reorderPointMap = new Map(items.map((item) => [item.id, item.reorder_point ?? 0]));
+    const purchaseLinksMap = new Map(
+      items.map((item) => [
+        item.id,
+        (item.component?.purchase_links ?? []).filter(
+          (link) => link.enabled && link.url.trim() !== "",
+        ),
+      ]),
+    );
 
     const rowsWithReorder = stockRows
       .map((row) => {
@@ -61,6 +58,7 @@ export default function HomePage({ items }: HomePageProps) {
           ...row,
           reorder_point: reorderPoint,
           reorder_gap: row.stock_qty - reorderPoint,
+          purchase_links: purchaseLinksMap.get(row.item_id) ?? [],
         };
       });
 
@@ -108,46 +106,24 @@ export default function HomePage({ items }: HomePageProps) {
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    function onPointerDown(event: MouseEvent | TouchEvent) {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest("[data-links-dropdown]")) return;
+      setOpenLinksItemID(null);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+    };
+  }, []);
+
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-10 md:px-6">
-      <div className="rounded-3xl bg-gradient-to-br from-cyan-300 via-blue-300 to-gray-300 p-8 shadow-2xl">
-        <h1 className="text-3xl font-black tracking-tight text-gray-900 md:text-5xl">
-          Inventory Home
-        </h1>
-        <p className="mt-3 max-w-2xl text-gray-800">
-          Track items, register new SKUs, and keep your stock definitions clean.
-        </p>
-        <div className="mt-6 flex gap-3">
-          <Link
-            to="/items/new"
-            className="rounded-full bg-gray-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-black"
-          >
-            Create Item
-          </Link>
-          <Link
-            to="/items"
-            className="rounded-full bg-white/80 px-5 py-3 text-sm font-bold text-gray-900 transition hover:bg-white"
-          >
-            Open Item List
-          </Link>
-        </div>
-      </div>
-
-      <section className="mt-8 grid gap-4 md:grid-cols-5">
-        {cards.map((card) => (
-          <article
-            key={card.label}
-            className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
-          >
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-              {card.label}
-            </p>
-            <p className="mt-2 text-3xl font-black text-gray-900">{card.value}</p>
-          </article>
-        ))}
-      </section>
-
-      <section className="mt-8 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
@@ -169,9 +145,9 @@ export default function HomePage({ items }: HomePageProps) {
               typeOptions={[
                 { value: "all", label: "all" },
                 { value: "assembly", label: "assembly" },
-                { value: "component_material", label: "component(material)" },
-                { value: "component_part", label: "component(part)" },
-                { value: "component_consumable", label: "component(consumable)" },
+                { value: "component_material", label: "material" },
+                { value: "component_part", label: "part" },
+                { value: "component_consumable", label: "consumable" },
               ]}
             />
           </div>
@@ -197,6 +173,7 @@ export default function HomePage({ items }: HomePageProps) {
                   <th className="p-3">Type</th>
                   <th className="p-3">Qty</th>
                   <th className="p-3">Reorder Point</th>
+                  <th className="p-3">Link</th>
                   <th className="p-3">Updated</th>
                 </tr>
               </thead>
@@ -211,15 +188,48 @@ export default function HomePage({ items }: HomePageProps) {
                     <td className="p-3 font-mono text-sm">{row.sku}</td>
                     <td className="p-3 text-sm">{row.name}</td>
                     <td className="p-3 text-sm">
-                      {row.item_type === "component"
-                        ? `component(${row.component_type || "material"})`
-                        : "assembly"}
+                      {row.item_type === "component" ? (row.component_type || "material") : "assembly"}
                     </td>
                     <td className="p-3 text-sm">
                       {row.stock_qty} {row.managed_unit}
                     </td>
                     <td className="p-3 text-sm">
                       {row.reorder_point} {row.managed_unit}
+                    </td>
+                    <td className="p-3 text-sm">
+                      {row.purchase_links.length > 0 ? (
+                        <div className="relative inline-block" data-links-dropdown>
+                          <button
+                            type="button"
+                            className="rounded-full border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                            onClick={() =>
+                              setOpenLinksItemID((prev) => (prev === row.item_id ? null : row.item_id))
+                            }
+                          >
+                            Links ({row.purchase_links.length})
+                          </button>
+                          {openLinksItemID === row.item_id && (
+                            <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-gray-200 bg-white p-2 shadow-lg">
+                              <div className="max-h-56 overflow-auto">
+                                {row.purchase_links.map((link, idx) => (
+                                  <a
+                                    key={link.id ?? `${row.item_id}-${idx}-${link.url}`}
+                                    href={link.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="block truncate rounded px-2 py-1 text-xs text-blue-700 hover:bg-blue-50 hover:underline"
+                                    title={link.url}
+                                  >
+                                    {link.label?.trim() ? link.label : link.url}
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        "-"
+                      )}
                     </td>
                     <td className="p-3 text-sm">{formatUtcTextToLocal(row.updated_at)}</td>
                   </tr>

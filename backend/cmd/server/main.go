@@ -137,6 +137,7 @@ type StockSummaryRow struct {
 	Name          string  `json:"name"`
 	ItemType      string  `json:"item_type"`
 	ComponentType string  `json:"component_type,omitempty"`
+	PurchaseURL   string  `json:"purchase_url,omitempty"`
 	ManagedUnit   string  `json:"managed_unit"`
 	StockManaged  bool    `json:"stock_managed"`
 	StockQty      float64 `json:"stock_qty"`
@@ -231,6 +232,14 @@ SELECT
   i.name,
   i.item_type,
   c.component_type,
+  (
+    SELECT l.url
+    FROM component_purchase_links l
+    WHERE l.component_id = c.component_id
+      AND l.enabled = 1
+    ORDER BY l.sort_order ASC, l.id ASC
+    LIMIT 1
+  ) AS purchase_url,
   i.managed_unit,
   i.stock_managed,
   COALESCE(SUM(
@@ -278,6 +287,7 @@ LIMIT ?
 		for rows.Next() {
 			var row StockSummaryRow
 			var componentType sql.NullString
+			var purchaseURL sql.NullString
 			var stockManagedInt int
 			var updatedAt sql.NullString
 			if err := rows.Scan(
@@ -286,6 +296,7 @@ LIMIT ?
 				&row.Name,
 				&row.ItemType,
 				&componentType,
+				&purchaseURL,
 				&row.ManagedUnit,
 				&stockManagedInt,
 				&row.StockQty,
@@ -297,6 +308,9 @@ LIMIT ?
 			row.StockManaged = stockManagedInt != 0
 			if componentType.Valid {
 				row.ComponentType = componentType.String
+			}
+			if purchaseURL.Valid {
+				row.PurchaseURL = purchaseURL.String
 			}
 			if updatedAt.Valid {
 				row.UpdatedAt = updatedAt.String
@@ -336,7 +350,8 @@ func createItem(dbx *sql.DB) http.HandlerFunc {
 		ComponentType string `json:"component_type"`
 		Color         string `json:"color"`
 		PurchaseLinks []struct {
-			URL string `json:"url"`
+			URL   string `json:"url"`
+			Label string `json:"label"`
 		} `json:"purchase_links"`
 	}
 
@@ -474,7 +489,11 @@ VALUES(?,?,?,?,?)
 			manufacturer := ""
 			componentType := "material"
 			color := ""
-			purchaseLinks := make([]string, 0)
+			type purchaseLinkInput struct {
+				URL   string
+				Label string
+			}
+			purchaseLinks := make([]purchaseLinkInput, 0)
 			if req.Component != nil {
 				manufacturer = strings.TrimSpace(req.Component.Manufacturer)
 				componentType = strings.TrimSpace(req.Component.ComponentType)
@@ -484,7 +503,10 @@ VALUES(?,?,?,?,?)
 					if u == "" {
 						continue
 					}
-					purchaseLinks = append(purchaseLinks, u)
+					purchaseLinks = append(purchaseLinks, purchaseLinkInput{
+						URL:   u,
+						Label: strings.TrimSpace(l.Label),
+					})
 				}
 			}
 			if componentType == "" {
@@ -506,11 +528,11 @@ VALUES(?,?,?,?)
 				http.Error(w, "failed to load component", http.StatusInternalServerError)
 				return
 			}
-			for idx, url := range purchaseLinks {
+			for idx, link := range purchaseLinks {
 				if _, err := tx.Exec(`
 INSERT INTO component_purchase_links(component_id, url, label, sort_order, enabled)
 VALUES(?,?,?,?,1)
-`, componentID, url, "", idx); err != nil {
+`, componentID, link.URL, link.Label, idx); err != nil {
 					http.Error(w, err.Error(), http.StatusBadRequest)
 					return
 				}
@@ -979,7 +1001,8 @@ func updateItem(dbx *sql.DB) http.HandlerFunc {
 		ComponentType string `json:"component_type"`
 		Color         string `json:"color"`
 		PurchaseLinks []struct {
-			URL string `json:"url"`
+			URL   string `json:"url"`
+			Label string `json:"label"`
 		} `json:"purchase_links"`
 	}
 	type Req struct {
@@ -1112,7 +1135,11 @@ ON CONFLICT(item_id) DO UPDATE SET
 			manufacturer := ""
 			componentType := "material"
 			color := ""
-			purchaseLinks := make([]string, 0)
+			type purchaseLinkInput struct {
+				URL   string
+				Label string
+			}
+			purchaseLinks := make([]purchaseLinkInput, 0)
 			if req.Component != nil {
 				manufacturer = strings.TrimSpace(req.Component.Manufacturer)
 				componentType = strings.TrimSpace(req.Component.ComponentType)
@@ -1122,7 +1149,10 @@ ON CONFLICT(item_id) DO UPDATE SET
 					if u == "" {
 						continue
 					}
-					purchaseLinks = append(purchaseLinks, u)
+					purchaseLinks = append(purchaseLinks, purchaseLinkInput{
+						URL:   u,
+						Label: strings.TrimSpace(l.Label),
+					})
 				}
 			}
 			if componentType == "" {
@@ -1152,11 +1182,11 @@ ON CONFLICT(item_id) DO UPDATE SET
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			for idx, url := range purchaseLinks {
+			for idx, link := range purchaseLinks {
 				if _, err := tx.Exec(`
 INSERT INTO component_purchase_links(component_id, url, label, sort_order, enabled)
 VALUES(?,?,?,?,1)
-`, componentID, url, "", idx); err != nil {
+`, componentID, link.URL, link.Label, idx); err != nil {
 					http.Error(w, err.Error(), http.StatusBadRequest)
 					return
 				}
