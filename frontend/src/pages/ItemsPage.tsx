@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import FilterBar from "../components/FilterBar";
-import type { Item } from "../types/item";
+import type { ComponentType, Item } from "../types/item";
 
 type ItemsPageProps = {
   items: Item[];
@@ -13,25 +13,24 @@ type EditForm = {
   managed_unit: Item["managed_unit"];
   pack_qty: string;
   reorder_point: string;
-  rev_code: string;
   note: string;
   stock_managed: boolean;
   is_sellable: boolean;
   is_final: boolean;
-  output_category: string;
   assembly_manufacturer: string;
   assembly_total_weight: string;
   assembly_pack_size: string;
   assembly_note: string;
   component_manufacturer: string;
-  component_type: string;
+  component_type: ComponentType;
   component_color: string;
+  component_purchase_urls: string[];
 };
 
 export default function ItemsPage({ items, error }: ItemsPageProps) {
   const [localItems, setLocalItems] = useState<Item[]>(items);
   const [keyword, setKeyword] = useState("");
-  const [typeFilter, setTypeFilter] = useState<"all" | "assembly" | "material" | "part">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "assembly" | "material" | "part" | "consumable">("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -42,19 +41,18 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
     managed_unit: "pcs",
     pack_qty: "",
     reorder_point: "0",
-    rev_code: "",
     note: "",
     stock_managed: true,
     is_sellable: false,
     is_final: false,
-    output_category: "",
     assembly_manufacturer: "",
     assembly_total_weight: "",
     assembly_pack_size: "",
     assembly_note: "",
     component_manufacturer: "",
-    component_type: "",
+    component_type: "material",
     component_color: "",
+    component_purchase_urls: [],
   });
 
   useEffect(() => {
@@ -78,6 +76,10 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
         if (item.item_type !== "component") return false;
         if (item.component?.component_type !== "part") return false;
       }
+      if (typeFilter === "consumable") {
+        if (item.item_type !== "component") return false;
+        if (item.component?.component_type !== "consumable") return false;
+      }
 
       if (!q) return true;
       return item.sku.toLowerCase().includes(q) || item.name.toLowerCase().includes(q);
@@ -97,12 +99,10 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
       managed_unit: item.managed_unit,
       pack_qty: item.pack_qty?.toString() ?? "",
       reorder_point: item.reorder_point?.toString() ?? "0",
-      rev_code: item.rev_code ?? "",
       note: item.note ?? "",
       stock_managed: item.stock_managed,
       is_sellable: item.is_sellable,
       is_final: item.is_final,
-      output_category: item.output_category ?? "",
       assembly_manufacturer: item.assembly?.manufacturer ?? "",
       assembly_total_weight: item.assembly?.total_weight?.toString() ?? "",
       assembly_pack_size: item.assembly?.pack_size ?? "",
@@ -110,6 +110,8 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
       component_manufacturer: item.component?.manufacturer ?? "",
       component_type: item.component?.component_type ?? "material",
       component_color: item.component?.color ?? "",
+      component_purchase_urls:
+        item.component?.purchase_links?.map((link) => link.url).filter((url) => url.trim() !== "") ?? [],
     });
     setSaveError("");
     setEditing(true);
@@ -153,11 +155,9 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
       managed_unit: editForm.managed_unit,
       pack_qty: packQty,
       reorder_point: reorderPoint,
-      rev_code: editForm.rev_code.trim(),
       stock_managed: editForm.stock_managed,
       is_sellable: editForm.is_sellable,
       is_final: editForm.is_final,
-      output_category: editForm.output_category.trim(),
       note: editForm.note.trim(),
     };
 
@@ -169,10 +169,15 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
         note: editForm.assembly_note.trim(),
       };
     } else if (selectedItem.item_type === "component") {
+      const purchaseLinks = editForm.component_purchase_urls
+        .map((url) => url.trim())
+        .filter((url) => url !== "")
+        .map((url) => ({ url }));
       payload.component = {
         manufacturer: editForm.component_manufacturer.trim(),
-        component_type: editForm.component_type.trim(),
+        component_type: editForm.component_type,
         color: editForm.component_color.trim(),
+        purchase_links: purchaseLinks,
       };
     }
 
@@ -196,12 +201,10 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
             managed_unit: editForm.managed_unit,
             pack_qty: packQty ?? undefined,
             reorder_point: reorderPoint,
-            rev_code: editForm.rev_code.trim() || undefined,
             note: editForm.note.trim() || undefined,
             stock_managed: editForm.stock_managed,
             is_sellable: editForm.is_sellable,
             is_final: editForm.is_final,
-            output_category: editForm.output_category.trim() || undefined,
             assembly:
               item.item_type === "assembly"
                 ? {
@@ -215,8 +218,11 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
               item.item_type === "component"
                 ? {
                     manufacturer: editForm.component_manufacturer.trim() || undefined,
-                    component_type: editForm.component_type.trim() || undefined,
+                    component_type: editForm.component_type,
                     color: editForm.component_color.trim() || undefined,
+                    purchase_links: editForm.component_purchase_urls
+                      .map((url, idx) => ({ url: url.trim(), sort_order: idx, enabled: true }))
+                      .filter((row) => row.url !== ""),
                   }
                 : item.component,
           };
@@ -243,12 +249,15 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                 onKeywordChange={setKeyword}
                 keywordPlaceholder="sku / name"
                 typeValue={typeFilter}
-                onTypeChange={(value) => setTypeFilter(value as "all" | "assembly" | "material" | "part")}
+                onTypeChange={(value) =>
+                  setTypeFilter(value as "all" | "assembly" | "material" | "part" | "consumable")
+                }
                 typeOptions={[
                   { value: "all", label: "all" },
                   { value: "assembly", label: "assembly" },
                   { value: "material", label: "material" },
                   { value: "part", label: "part" },
+                  { value: "consumable", label: "consumable" },
                 ]}
               />
             </div>
@@ -396,24 +405,6 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                 onChange={(e) => setEditForm((f) => ({ ...f, reorder_point: e.target.value }))}
               />
             </label>
-            <label className="font-medium">
-              Rev Code
-              <input
-                disabled={!editing}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                value={editing ? editForm.rev_code : selectedItem.rev_code ?? ""}
-                onChange={(e) => setEditForm((f) => ({ ...f, rev_code: e.target.value }))}
-              />
-            </label>
-            <label className="font-medium">
-              Output Category
-              <input
-                disabled={!editing}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                value={editing ? editForm.output_category : selectedItem.output_category ?? ""}
-                onChange={(e) => setEditForm((f) => ({ ...f, output_category: e.target.value }))}
-              />
-            </label>
             <label className="flex items-center gap-2 font-medium">
               <input
                 type="checkbox"
@@ -512,10 +503,13 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                   disabled={!editing}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
                   value={editing ? editForm.component_type : selectedItem.component?.component_type ?? "material"}
-                  onChange={(e) => setEditForm((f) => ({ ...f, component_type: e.target.value }))}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, component_type: e.target.value as ComponentType }))
+                  }
                 >
                   <option value="material">material</option>
                   <option value="part">part</option>
+                  <option value="consumable">consumable</option>
                 </select>
               </label>
               <label className="font-medium">
@@ -527,6 +521,73 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                   onChange={(e) => setEditForm((f) => ({ ...f, component_color: e.target.value }))}
                 />
               </label>
+              <div className="font-medium md:col-span-3">
+                Purchase URLs
+                {editing ? (
+                  <div className="mt-2 space-y-2">
+                    {editForm.component_purchase_urls.map((url, idx) => (
+                      <div key={`${idx}-${url}`} className="flex items-center gap-2">
+                        <input
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+                          value={url}
+                          onChange={(e) =>
+                            setEditForm((f) => {
+                              const next = [...f.component_purchase_urls];
+                              next[idx] = e.target.value;
+                              return { ...f, component_purchase_urls: next };
+                            })
+                          }
+                          placeholder="https://..."
+                        />
+                        <button
+                          type="button"
+                          className="rounded-full border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                          onClick={() =>
+                            setEditForm((f) => ({
+                              ...f,
+                              component_purchase_urls: f.component_purchase_urls.filter((_, i) => i !== idx),
+                            }))
+                          }
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    <div>
+                      <button
+                        type="button"
+                        className="rounded-full border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                        onClick={() =>
+                          setEditForm((f) => ({
+                            ...f,
+                            component_purchase_urls: [...f.component_purchase_urls, ""],
+                          }))
+                        }
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-2 space-y-1 text-sm">
+                    {selectedItem.component?.purchase_links && selectedItem.component.purchase_links.length > 0 ? (
+                      selectedItem.component.purchase_links.map((link) => (
+                        <a
+                          key={`${link.id ?? link.url}-${link.url}`}
+                          href={link.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block break-all text-blue-700 underline"
+                        >
+                          {link.url}
+                        </a>
+                      ))
+                    ) : (
+                      <p className="text-gray-500">-</p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
           </section>

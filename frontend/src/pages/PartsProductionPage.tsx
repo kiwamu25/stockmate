@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import NumericStepper from "../components/NumericStepper";
+import type { ComponentType } from "../types/item";
 import { formatUtcTextToLocal } from "../utils/datetime";
 
 type ProductionPart = {
@@ -18,7 +19,7 @@ type ConsumptionRow = {
   sku: string;
   name: string;
   item_type: string;
-  component_type?: string;
+  component_type?: ComponentType;
   managed_unit: "pcs" | "g";
   qty: number;
 };
@@ -239,7 +240,7 @@ export default function PartsProductionPage() {
       {consumptions.length > 0 && (
         <section className="mt-4 overflow-hidden rounded-xl border border-amber-200 bg-amber-50">
           <div className="border-b border-amber-200 px-4 py-3">
-            <h2 className="text-sm font-bold text-amber-900">使用した material / parts</h2>
+            <h2 className="text-sm font-bold text-amber-900">使用した material / part / consumable</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">

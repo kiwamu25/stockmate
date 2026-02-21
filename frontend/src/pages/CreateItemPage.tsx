@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import ItemCsvTools from "../components/ItemCsvTools";
-import type { Item } from "../types/item";
+import type { ComponentType, Item } from "../types/item";
 
 export default function CreateItemPage() {
   type SelectableItemType = Item["item_type"] | "";
@@ -16,11 +16,9 @@ export default function CreateItemPage() {
     managed_unit: "pcs" as Item["managed_unit"],
     pack_qty: "",
     reorder_point: "0",
-    rev_code: "",
     stock_managed: true,
     is_sellable: false,
     is_final: false,
-    output_category: "",
     note: "",
   });
   const [assemblyForm, setAssemblyForm] = useState({
@@ -31,7 +29,7 @@ export default function CreateItemPage() {
   });
   const [componentForm, setComponentForm] = useState({
     manufacturer: "",
-    component_type: "material",
+    component_type: "material" as ComponentType,
     color: "",
   });
 
@@ -49,11 +47,9 @@ export default function CreateItemPage() {
       managed_unit: "pcs",
       pack_qty: "",
       reorder_point: "0",
-      rev_code: "",
       stock_managed: true,
       is_sellable: false,
       is_final: false,
-      output_category: "",
       note: "",
     });
     setAssemblyForm({
@@ -151,11 +147,9 @@ export default function CreateItemPage() {
         managed_unit: form.managed_unit,
         pack_qty: packQty,
         reorder_point: reorderPoint,
-        rev_code: form.rev_code.trim(),
         stock_managed: form.stock_managed,
         is_sellable: form.is_sellable,
         is_final: form.is_final,
-        output_category: form.output_category.trim(),
         note: form.note.trim(),
       };
 
@@ -200,11 +194,9 @@ export default function CreateItemPage() {
       managed_unit: item.managed_unit,
       pack_qty: item.pack_qty?.toString() ?? "",
       reorder_point: item.reorder_point?.toString() ?? "0",
-      rev_code: item.rev_code ?? "",
       stock_managed: item.stock_managed,
       is_sellable: item.is_sellable,
       is_final: item.is_final,
-      output_category: item.output_category ?? "",
       note: item.note ?? "",
     }));
 
@@ -318,26 +310,6 @@ export default function CreateItemPage() {
               />
             </label>
 
-                <label className="text-sm font-medium text-gray-700">
-              Output Category
-              <input
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                value={form.output_category}
-                onChange={(e) => setForm((f) => ({ ...f, output_category: e.target.value }))}
-                placeholder="shipment category"
-              />
-            </label>
-
-                <label className="text-sm font-medium text-gray-700 md:col-span-2">
-              Rev Code
-              <input
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                value={form.rev_code}
-                onChange={(e) => setForm((f) => ({ ...f, rev_code: e.target.value }))}
-                placeholder="A / B / C"
-              />
-            </label>
-
                 <label className="text-sm font-medium text-gray-700 md:col-span-2">
               Note
               <input
@@ -417,11 +389,12 @@ export default function CreateItemPage() {
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
                     value={componentForm.component_type}
                     onChange={(e) =>
-                      setComponentForm((f) => ({ ...f, component_type: e.target.value }))
+                      setComponentForm((f) => ({ ...f, component_type: e.target.value as ComponentType }))
                     }
                   >
                     <option value="material">material</option>
                     <option value="part">part</option>
+                    <option value="consumable">consumable</option>
                   </select>
                 </label>
                 <label className="text-sm font-medium text-gray-700 md:col-span-2">
@@ -505,7 +478,6 @@ export default function CreateItemPage() {
                   <tr className="bg-gray-100 text-left text-xs uppercase tracking-wide text-gray-600">
                     <th className="p-2">SKU</th>
                     <th className="p-2">Name</th>
-                    <th className="p-2">Rev</th>
                     <th className="p-2">Unit</th>
                     <th className="p-2">Copy</th>
                   </tr>
@@ -519,7 +491,6 @@ export default function CreateItemPage() {
                     >
                       <td className="p-2 font-mono">{item.sku}</td>
                       <td className="p-2">{item.name}</td>
-                      <td className="p-2">{item.rev_code || "-"}</td>
                       <td className="p-2">{item.managed_unit}</td>
                       <td className="p-2">
                         <button

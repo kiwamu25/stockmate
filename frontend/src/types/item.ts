@@ -1,3 +1,13 @@
+export type ComponentType = "part" | "material" | "consumable";
+export type ComponentPurchaseLink = {
+  id?: number;
+  url: string;
+  label?: string;
+  sort_order?: number;
+  created_at?: string;
+  enabled: boolean;
+};
+
 export type Item = {
   id: number;
   series_id?: number;
@@ -7,11 +17,9 @@ export type Item = {
   pack_qty?: number;
   reorder_point?: number;
   managed_unit: "g" | "pcs";
-  rev_code?: string;
   stock_managed: boolean;
   is_sellable: boolean;
   is_final: boolean;
-  output_category?: string;
   note?: string;
   created_at?: string;
   updated_at?: string;
@@ -23,7 +31,8 @@ export type Item = {
   };
   component?: {
     manufacturer?: string;
-    component_type?: string;
+    component_type?: ComponentType;
     color?: string;
+    purchase_links?: ComponentPurchaseLink[];
   };
 };

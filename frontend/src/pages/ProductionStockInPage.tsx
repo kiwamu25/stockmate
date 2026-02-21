@@ -8,7 +8,7 @@ type ProductionComponent = {
   sku: string;
   name: string;
   managed_unit: "pcs" | "g";
-  component_type: "material" | "part";
+  component_type: "material" | "part" | "consumable";
   pack_qty?: number;
   stock_qty: number;
   updated_at?: string;
@@ -121,7 +121,7 @@ export default function ProductionStockInPage() {
         <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
           <h1 className="text-xl font-black text-gray-900">Stock In</h1>
           <p className="mt-1 text-xs text-gray-500">
-            material / part の単純入庫をまとめて実行します。
+            material / part / consumable の単純入庫をまとめて実行します。
           </p>
         </div>
 
@@ -147,7 +147,7 @@ export default function ProductionStockInPage() {
         {loading && <p className="px-6 pb-4 text-sm text-gray-500">Loading...</p>}
 
         {!loading && rows.length === 0 ? (
-          <p className="px-6 py-8 text-sm text-gray-500">material / part がまだありません。</p>
+          <p className="px-6 py-8 text-sm text-gray-500">material / part / consumable がまだありません。</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse">

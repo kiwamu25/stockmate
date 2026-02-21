@@ -14,24 +14,22 @@ import (
 )
 
 type Item struct {
-	ID             int64            `json:"id"`
-	SeriesID       *int64           `json:"series_id,omitempty"`
-	SKU            string           `json:"sku"`
-	Name           string           `json:"name"`
-	ItemType       string           `json:"item_type"`
-	PackQty        *float64         `json:"pack_qty,omitempty"`
-	ReorderPoint   *float64         `json:"reorder_point,omitempty"`
-	ManagedUnit    string           `json:"managed_unit"`
-	RevCode        string           `json:"rev_code,omitempty"`
-	StockManaged   bool             `json:"stock_managed"`
-	IsSellable     bool             `json:"is_sellable"`
-	IsFinal        bool             `json:"is_final"`
-	OutputCategory string           `json:"output_category,omitempty"`
-	Note           string           `json:"note,omitempty"`
-	CreatedAt      string           `json:"created_at,omitempty"`
-	UpdatedAt      string           `json:"updated_at,omitempty"`
-	Assembly       *AssemblyDetail  `json:"assembly,omitempty"`
-	Component      *ComponentDetail `json:"component,omitempty"`
+	ID           int64            `json:"id"`
+	SeriesID     *int64           `json:"series_id,omitempty"`
+	SKU          string           `json:"sku"`
+	Name         string           `json:"name"`
+	ItemType     string           `json:"item_type"`
+	PackQty      *float64         `json:"pack_qty,omitempty"`
+	ReorderPoint *float64         `json:"reorder_point,omitempty"`
+	ManagedUnit  string           `json:"managed_unit"`
+	StockManaged bool             `json:"stock_managed"`
+	IsSellable   bool             `json:"is_sellable"`
+	IsFinal      bool             `json:"is_final"`
+	Note         string           `json:"note,omitempty"`
+	CreatedAt    string           `json:"created_at,omitempty"`
+	UpdatedAt    string           `json:"updated_at,omitempty"`
+	Assembly     *AssemblyDetail  `json:"assembly,omitempty"`
+	Component    *ComponentDetail `json:"component,omitempty"`
 }
 
 type AssemblyDetail struct {
@@ -42,9 +40,19 @@ type AssemblyDetail struct {
 }
 
 type ComponentDetail struct {
-	Manufacturer  string `json:"manufacturer,omitempty"`
-	ComponentType string `json:"component_type,omitempty"`
-	Color         string `json:"color,omitempty"`
+	Manufacturer  string                  `json:"manufacturer,omitempty"`
+	ComponentType string                  `json:"component_type,omitempty"`
+	Color         string                  `json:"color,omitempty"`
+	PurchaseLinks []ComponentPurchaseLink `json:"purchase_links,omitempty"`
+}
+
+type ComponentPurchaseLink struct {
+	ID        int64  `json:"id,omitempty"`
+	URL       string `json:"url"`
+	Label     string `json:"label,omitempty"`
+	SortOrder int    `json:"sort_order,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
+	Enabled   bool   `json:"enabled"`
 }
 
 type AssemblyComponent struct {
@@ -327,25 +335,26 @@ func createItem(dbx *sql.DB) http.HandlerFunc {
 		Manufacturer  string `json:"manufacturer"`
 		ComponentType string `json:"component_type"`
 		Color         string `json:"color"`
+		PurchaseLinks []struct {
+			URL string `json:"url"`
+		} `json:"purchase_links"`
 	}
 
 	type Req struct {
-		SeriesID       *int64        `json:"series_id"`
-		SKU            string        `json:"sku"`
-		Name           string        `json:"name"`
-		ItemType       string        `json:"item_type"`
-		ManagedUnit    string        `json:"managed_unit"`
-		BaseUnit       string        `json:"base_unit"`
-		PackQty        *float64      `json:"pack_qty"`
-		ReorderPoint   *float64      `json:"reorder_point"`
-		RevCode        string        `json:"rev_code"`
-		StockManaged   *bool         `json:"stock_managed"`
-		IsSellable     bool          `json:"is_sellable"`
-		IsFinal        bool          `json:"is_final"`
-		OutputCategory string        `json:"output_category"`
-		Note           string        `json:"note"`
-		Assembly       *AssemblyReq  `json:"assembly"`
-		Component      *ComponentReq `json:"component"`
+		SeriesID     *int64        `json:"series_id"`
+		SKU          string        `json:"sku"`
+		Name         string        `json:"name"`
+		ItemType     string        `json:"item_type"`
+		ManagedUnit  string        `json:"managed_unit"`
+		BaseUnit     string        `json:"base_unit"`
+		PackQty      *float64      `json:"pack_qty"`
+		ReorderPoint *float64      `json:"reorder_point"`
+		StockManaged *bool         `json:"stock_managed"`
+		IsSellable   bool          `json:"is_sellable"`
+		IsFinal      bool          `json:"is_final"`
+		Note         string        `json:"note"`
+		Assembly     *AssemblyReq  `json:"assembly"`
+		Component    *ComponentReq `json:"component"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -357,9 +366,7 @@ func createItem(dbx *sql.DB) http.HandlerFunc {
 
 		req.SKU = strings.TrimSpace(req.SKU)
 		req.Name = strings.TrimSpace(req.Name)
-		req.RevCode = strings.TrimSpace(req.RevCode)
 		req.Note = strings.TrimSpace(req.Note)
-		req.OutputCategory = strings.TrimSpace(req.OutputCategory)
 		if req.SKU == "" || req.Name == "" {
 			http.Error(w, "sku and name required", http.StatusBadRequest)
 			return
@@ -433,9 +440,9 @@ func createItem(dbx *sql.DB) http.HandlerFunc {
 		defer tx.Rollback()
 
 		res, err := tx.Exec(`
-INSERT INTO items(series_id, sku, name, item_type, stock_managed, is_sellable, is_final, output_category, pack_qty, reorder_point, managed_unit, rev_code, note)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-`, seriesID, req.SKU, req.Name, itemType, sm, sellable, final, req.OutputCategory, packQty, reorderPoint, unit, req.RevCode, req.Note)
+INSERT INTO items(series_id, sku, name, item_type, stock_managed, is_sellable, is_final, pack_qty, reorder_point, managed_unit, note)
+VALUES(?,?,?,?,?,?,?,?,?,?,?)
+`, seriesID, req.SKU, req.Name, itemType, sm, sellable, final, packQty, reorderPoint, unit, req.Note)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -467,16 +474,24 @@ VALUES(?,?,?,?,?)
 			manufacturer := ""
 			componentType := "material"
 			color := ""
+			purchaseLinks := make([]string, 0)
 			if req.Component != nil {
 				manufacturer = strings.TrimSpace(req.Component.Manufacturer)
 				componentType = strings.TrimSpace(req.Component.ComponentType)
 				color = strings.TrimSpace(req.Component.Color)
+				for _, l := range req.Component.PurchaseLinks {
+					u := strings.TrimSpace(l.URL)
+					if u == "" {
+						continue
+					}
+					purchaseLinks = append(purchaseLinks, u)
+				}
 			}
 			if componentType == "" {
 				componentType = "material"
 			}
-			if componentType != "part" && componentType != "material" {
-				http.Error(w, "component.component_type must be part or material", http.StatusBadRequest)
+			if componentType != "part" && componentType != "material" && componentType != "consumable" {
+				http.Error(w, "component.component_type must be part, material, or consumable", http.StatusBadRequest)
 				return
 			}
 			if _, err := tx.Exec(`
@@ -485,6 +500,20 @@ VALUES(?,?,?,?)
 `, id, manufacturer, componentType, color); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
+			}
+			var componentID int64
+			if err := tx.QueryRow(`SELECT component_id FROM components WHERE item_id = ?`, id).Scan(&componentID); err != nil {
+				http.Error(w, "failed to load component", http.StatusInternalServerError)
+				return
+			}
+			for idx, url := range purchaseLinks {
+				if _, err := tx.Exec(`
+INSERT INTO component_purchase_links(component_id, url, label, sort_order, enabled)
+VALUES(?,?,?,?,1)
+`, componentID, url, "", idx); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
 			}
 		}
 
@@ -499,20 +528,18 @@ VALUES(?,?,?,?)
 			respReorderPoint = *req.ReorderPoint
 		}
 		_ = json.NewEncoder(w).Encode(Item{
-			ID:             id,
-			SeriesID:       req.SeriesID,
-			SKU:            req.SKU,
-			Name:           req.Name,
-			ItemType:       itemType,
-			PackQty:        req.PackQty,
-			ReorderPoint:   &respReorderPoint,
-			ManagedUnit:    unit,
-			RevCode:        req.RevCode,
-			StockManaged:   stockManaged,
-			IsSellable:     req.IsSellable,
-			IsFinal:        req.IsFinal,
-			OutputCategory: req.OutputCategory,
-			Note:           req.Note,
+			ID:           id,
+			SeriesID:     req.SeriesID,
+			SKU:          req.SKU,
+			Name:         req.Name,
+			ItemType:     itemType,
+			PackQty:      req.PackQty,
+			ReorderPoint: &respReorderPoint,
+			ManagedUnit:  unit,
+			StockManaged: stockManaged,
+			IsSellable:   req.IsSellable,
+			IsFinal:      req.IsFinal,
+			Note:         req.Note,
 		})
 	}
 }
@@ -529,11 +556,9 @@ SELECT
   i.pack_qty,
   i.reorder_point,
   i.managed_unit,
-  i.rev_code,
   i.stock_managed,
   i.is_sellable,
   i.is_final,
-  i.output_category,
   i.note,
   i.created_at,
   i.updated_at,
@@ -557,6 +582,8 @@ LIMIT 200
 		defer rows.Close()
 
 		out := make([]Item, 0)
+		componentItemIDs := make([]int64, 0)
+		componentItemIndex := make(map[int64]int)
 		for rows.Next() {
 			var it Item
 			var seriesID sql.NullInt64
@@ -566,8 +593,6 @@ LIMIT 200
 			var packQty sql.NullFloat64
 			var reorderPoint sql.NullFloat64
 			var managedUnit sql.NullString
-			var revCode sql.NullString
-			var outputCategory sql.NullString
 			var note sql.NullString
 			var createdAt sql.NullString
 			var updatedAt sql.NullString
@@ -590,11 +615,9 @@ LIMIT 200
 				&packQty,
 				&reorderPoint,
 				&managedUnit,
-				&revCode,
 				&sm,
 				&sellable,
 				&final,
-				&outputCategory,
 				&note,
 				&createdAt,
 				&updatedAt,
@@ -634,12 +657,6 @@ LIMIT 200
 			if managedUnit.Valid {
 				it.ManagedUnit = managedUnit.String
 			}
-			if revCode.Valid {
-				it.RevCode = revCode.String
-			}
-			if outputCategory.Valid {
-				it.OutputCategory = outputCategory.String
-			}
 			if note.Valid {
 				it.Note = note.String
 			}
@@ -666,11 +683,84 @@ LIMIT 200
 					ComponentType: componentType.String,
 					Color:         componentColor.String,
 				}
+				componentItemIndex[it.ID] = len(out)
+				componentItemIDs = append(componentItemIDs, it.ID)
 			}
 			it.StockManaged = (sm != 0)
 			it.IsSellable = (sellable != 0)
 			it.IsFinal = (final != 0)
 			out = append(out, it)
+		}
+		if err := rows.Err(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if len(componentItemIDs) > 0 {
+			args := make([]any, 0, len(componentItemIDs))
+			placeholders := make([]string, 0, len(componentItemIDs))
+			for _, itemID := range componentItemIDs {
+				args = append(args, itemID)
+				placeholders = append(placeholders, "?")
+			}
+			linkRows, err := dbx.Query(fmt.Sprintf(`
+SELECT
+  c.item_id,
+  l.id,
+  l.url,
+  l.label,
+  l.sort_order,
+  l.created_at,
+  l.enabled
+FROM components c
+JOIN component_purchase_links l ON l.component_id = c.component_id
+WHERE c.item_id IN (%s)
+ORDER BY c.item_id, l.sort_order ASC, l.id ASC
+`, strings.Join(placeholders, ",")), args...)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			defer linkRows.Close()
+
+			for linkRows.Next() {
+				var itemID int64
+				var link ComponentPurchaseLink
+				var label sql.NullString
+				var createdAt sql.NullString
+				var enabledInt int
+				if err := linkRows.Scan(
+					&itemID,
+					&link.ID,
+					&link.URL,
+					&label,
+					&link.SortOrder,
+					&createdAt,
+					&enabledInt,
+				); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				link.Enabled = enabledInt != 0
+				if label.Valid {
+					link.Label = label.String
+				}
+				if createdAt.Valid {
+					link.CreatedAt = createdAt.String
+				}
+				idx, ok := componentItemIndex[itemID]
+				if !ok {
+					continue
+				}
+				if out[idx].Component == nil {
+					out[idx].Component = &ComponentDetail{}
+				}
+				out[idx].Component.PurchaseLinks = append(out[idx].Component.PurchaseLinks, link)
+			}
+			if err := linkRows.Err(); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -710,11 +800,9 @@ SELECT
   i.pack_qty,
   i.reorder_point,
   i.managed_unit,
-  i.rev_code,
   i.stock_managed,
   i.is_sellable,
   i.is_final,
-  i.output_category,
   i.note,
   i.created_at,
   i.updated_at,
@@ -800,8 +888,6 @@ WHERE i.item_type = 'assembly'
 			var seriesID sql.NullInt64
 			var packQty sql.NullFloat64
 			var reorderPoint sql.NullFloat64
-			var revCode sql.NullString
-			var outputCategory sql.NullString
 			var note sql.NullString
 			var createdAt sql.NullString
 			var updatedAt sql.NullString
@@ -821,11 +907,9 @@ WHERE i.item_type = 'assembly'
 				&packQty,
 				&reorderPoint,
 				&it.ManagedUnit,
-				&revCode,
 				&sm,
 				&sellable,
 				&final,
-				&outputCategory,
 				&note,
 				&createdAt,
 				&updatedAt,
@@ -850,12 +934,6 @@ WHERE i.item_type = 'assembly'
 				rp = reorderPoint.Float64
 			}
 			it.ReorderPoint = &rp
-			if revCode.Valid {
-				it.RevCode = revCode.String
-			}
-			if outputCategory.Valid {
-				it.OutputCategory = outputCategory.String
-			}
 			if note.Valid {
 				it.Note = note.String
 			}
@@ -900,21 +978,22 @@ func updateItem(dbx *sql.DB) http.HandlerFunc {
 		Manufacturer  string `json:"manufacturer"`
 		ComponentType string `json:"component_type"`
 		Color         string `json:"color"`
+		PurchaseLinks []struct {
+			URL string `json:"url"`
+		} `json:"purchase_links"`
 	}
 	type Req struct {
-		SKU            string        `json:"sku"`
-		Name           string        `json:"name"`
-		ManagedUnit    string        `json:"managed_unit"`
-		PackQty        *float64      `json:"pack_qty"`
-		ReorderPoint   *float64      `json:"reorder_point"`
-		RevCode        string        `json:"rev_code"`
-		StockManaged   bool          `json:"stock_managed"`
-		IsSellable     bool          `json:"is_sellable"`
-		IsFinal        bool          `json:"is_final"`
-		OutputCategory string        `json:"output_category"`
-		Note           string        `json:"note"`
-		Assembly       *AssemblyReq  `json:"assembly"`
-		Component      *ComponentReq `json:"component"`
+		SKU          string        `json:"sku"`
+		Name         string        `json:"name"`
+		ManagedUnit  string        `json:"managed_unit"`
+		PackQty      *float64      `json:"pack_qty"`
+		ReorderPoint *float64      `json:"reorder_point"`
+		StockManaged bool          `json:"stock_managed"`
+		IsSellable   bool          `json:"is_sellable"`
+		IsFinal      bool          `json:"is_final"`
+		Note         string        `json:"note"`
+		Assembly     *AssemblyReq  `json:"assembly"`
+		Component    *ComponentReq `json:"component"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -934,9 +1013,7 @@ func updateItem(dbx *sql.DB) http.HandlerFunc {
 		req.SKU = strings.TrimSpace(req.SKU)
 		req.Name = strings.TrimSpace(req.Name)
 		req.ManagedUnit = strings.TrimSpace(req.ManagedUnit)
-		req.RevCode = strings.TrimSpace(req.RevCode)
 		req.Note = strings.TrimSpace(req.Note)
-		req.OutputCategory = strings.TrimSpace(req.OutputCategory)
 		if req.SKU == "" || req.Name == "" {
 			http.Error(w, "sku and name required", http.StatusBadRequest)
 			return
@@ -998,9 +1075,9 @@ func updateItem(dbx *sql.DB) http.HandlerFunc {
 
 		if _, err := tx.Exec(`
 UPDATE items
-SET sku = ?, name = ?, stock_managed = ?, is_sellable = ?, is_final = ?, output_category = ?, pack_qty = ?, reorder_point = ?, managed_unit = ?, rev_code = ?, note = ?
+SET sku = ?, name = ?, stock_managed = ?, is_sellable = ?, is_final = ?, pack_qty = ?, reorder_point = ?, managed_unit = ?, note = ?
 WHERE item_id = ?
-`, req.SKU, req.Name, sm, sellable, final, req.OutputCategory, packQty, reorderPoint, req.ManagedUnit, req.RevCode, req.Note, itemID); err != nil {
+`, req.SKU, req.Name, sm, sellable, final, packQty, reorderPoint, req.ManagedUnit, req.Note, itemID); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -1035,16 +1112,24 @@ ON CONFLICT(item_id) DO UPDATE SET
 			manufacturer := ""
 			componentType := "material"
 			color := ""
+			purchaseLinks := make([]string, 0)
 			if req.Component != nil {
 				manufacturer = strings.TrimSpace(req.Component.Manufacturer)
 				componentType = strings.TrimSpace(req.Component.ComponentType)
 				color = strings.TrimSpace(req.Component.Color)
+				for _, l := range req.Component.PurchaseLinks {
+					u := strings.TrimSpace(l.URL)
+					if u == "" {
+						continue
+					}
+					purchaseLinks = append(purchaseLinks, u)
+				}
 			}
 			if componentType == "" {
 				componentType = "material"
 			}
-			if componentType != "part" && componentType != "material" {
-				http.Error(w, "component.component_type must be part or material", http.StatusBadRequest)
+			if componentType != "part" && componentType != "material" && componentType != "consumable" {
+				http.Error(w, "component.component_type must be part, material, or consumable", http.StatusBadRequest)
 				return
 			}
 			if _, err := tx.Exec(`
@@ -1057,6 +1142,24 @@ ON CONFLICT(item_id) DO UPDATE SET
 `, itemID, manufacturer, componentType, color); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
+			}
+			var componentID int64
+			if err := tx.QueryRow(`SELECT component_id FROM components WHERE item_id = ?`, itemID).Scan(&componentID); err != nil {
+				http.Error(w, "failed to load component", http.StatusInternalServerError)
+				return
+			}
+			if _, err := tx.Exec(`DELETE FROM component_purchase_links WHERE component_id = ?`, componentID); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			for idx, url := range purchaseLinks {
+				if _, err := tx.Exec(`
+INSERT INTO component_purchase_links(component_id, url, label, sort_order, enabled)
+VALUES(?,?,?,?,1)
+`, componentID, url, "", idx); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
 			}
 		}
 
@@ -1538,7 +1641,7 @@ LEFT JOIN (
   GROUP BY item_id
 ) st ON st.item_id = i.item_id
 WHERE i.item_type = 'component'
-  AND c.component_type IN ('material', 'part')
+  AND c.component_type IN ('material', 'part', 'consumable')
 `)
 		args := make([]any, 0)
 		if q != "" {
@@ -1644,13 +1747,13 @@ FROM items i
 JOIN components c ON c.item_id = i.item_id
 WHERE i.item_id = ?
   AND i.item_type = 'component'
-  AND c.component_type IN ('material','part')
+  AND c.component_type IN ('material','part','consumable')
 `, itemID).Scan(&count); err != nil {
 				http.Error(w, "failed to validate item", http.StatusInternalServerError)
 				return
 			}
 			if count == 0 {
-				http.Error(w, fmt.Sprintf("item must be component(material/part): %d", itemID), http.StatusBadRequest)
+				http.Error(w, fmt.Sprintf("item must be component(material/part/consumable): %d", itemID), http.StatusBadRequest)
 				return
 			}
 			if _, err := tx.Exec(`

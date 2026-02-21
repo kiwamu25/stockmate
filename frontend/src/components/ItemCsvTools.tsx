@@ -26,18 +26,16 @@ function isDuplicateSkuError(message: string): boolean {
   );
 }
 
-const TYPE_HEADERS: Record<ItemType, string[]> = {
+const TYPE_REQUIRED_HEADERS: Record<ItemType, string[]> = {
   component: [
     "sku",
     "name",
     "managed_unit",
     "pack_qty",
     "reorder_point",
-    "rev_code",
     "stock_managed",
     "is_sellable",
     "is_final",
-    "output_category",
     "note",
     "component_manufacturer",
     "component_type",
@@ -49,11 +47,9 @@ const TYPE_HEADERS: Record<ItemType, string[]> = {
     "managed_unit",
     "pack_qty",
     "reorder_point",
-    "rev_code",
     "stock_managed",
     "is_sellable",
     "is_final",
-    "output_category",
     "note",
     "assembly_manufacturer",
     "assembly_total_weight",
@@ -62,39 +58,69 @@ const TYPE_HEADERS: Record<ItemType, string[]> = {
   ],
 };
 
-const TEMPLATE_ROWS: Record<ItemType, string[]> = {
+const TYPE_TEMPLATE_HEADERS: Record<ItemType, string[]> = {
   component: [
-    "PRT-001",
-    "M3 Nut",
-    "pcs",
-    "100",
-    "20",
-    "A",
-    "true",
-    "false",
-    "false",
-    "",
-    "",
-    "Generic",
-    "part",
-    "",
+    ...TYPE_REQUIRED_HEADERS.component,
+    "purchase_url_1",
+    "purchase_url_2",
+    "purchase_url_3",
+  ],
+  assembly: TYPE_REQUIRED_HEADERS.assembly,
+};
+
+const TEMPLATE_ROWS: Record<ItemType, string[][]> = {
+  component: [
+    [
+      "PRT-001",
+      "M3 Nut",
+      "pcs",
+      "100",
+      "20",
+      "true",
+      "false",
+      "false",
+      "",
+      "Generic",
+      "part",
+      "",
+      "https://example.com/items/m3-nut",
+      "https://shop.example.net/products/m3-nut",
+      "https://store.example.org/m3-nut",
+    ],
+    [
+      "CON-001",
+      "Nozzle Cleaner",
+      "pcs",
+      "30",
+      "5",
+      "true",
+      "false",
+      "false",
+      "",
+      "Generic",
+      "consumable",
+      "",
+      "https://example.com/items/nozzle-cleaner",
+      "https://shop.example.net/products/nozzle-cleaner",
+      "",
+    ],
   ],
   assembly: [
-    "ASM-001",
-    "Phone Stand",
-    "pcs",
-    "10",
-    "3",
-    "A",
-    "true",
-    "true",
-    "true",
-    "online",
-    "",
-    "In-house",
-    "120",
-    "10x8x12",
-    "",
+    [
+      "ASM-001",
+      "Phone Stand",
+      "pcs",
+      "10",
+      "3",
+      "true",
+      "true",
+      "true",
+      "",
+      "In-house",
+      "120",
+      "10x8x12",
+      "",
+    ],
   ],
 };
 
@@ -190,6 +216,26 @@ function parseBoolean(text: string, field: string, defaultValue: boolean): boole
   throw new Error(`${field} must be true/false (or 1/0).`);
 }
 
+function parseComponentType(text: string): "material" | "part" | "consumable" {
+  const value = text.trim().toLowerCase();
+  if (value === "") return "material";
+  if (value === "material" || value === "part" || value === "consumable") {
+    return value;
+  }
+  throw new Error("component_type must be material, part, or consumable.");
+}
+
+function collectPurchaseLinks(rowMap: Record<string, string>): Array<{ url: string }> {
+  const keys = ["purchase_url_1", "purchase_url_2", "purchase_url_3"];
+  const out: Array<{ url: string }> = [];
+  for (const key of keys) {
+    const url = (rowMap[key] ?? "").trim();
+    if (url === "") continue;
+    out.push({ url });
+  }
+  return out;
+}
+
 function decodeCsv(bytes: Uint8Array, encoding: CsvEncoding): string {
   try {
     return new TextDecoder(encoding, { fatal: true }).decode(bytes);
@@ -217,11 +263,9 @@ function buildPayload(itemType: ItemType, rowMap: Record<string, string>): Recor
       "reorder_point",
       0,
     ),
-    rev_code: (rowMap.rev_code ?? "").trim(),
     stock_managed: parseBoolean(rowMap.stock_managed ?? "", "stock_managed", true),
     is_sellable: parseBoolean(rowMap.is_sellable ?? "", "is_sellable", false),
     is_final: parseBoolean(rowMap.is_final ?? "", "is_final", false),
-    output_category: (rowMap.output_category ?? "").trim(),
     note: (rowMap.note ?? "").trim(),
   };
 
@@ -236,10 +280,12 @@ function buildPayload(itemType: ItemType, rowMap: Record<string, string>): Recor
       note: (rowMap.assembly_note ?? "").trim(),
     };
   } else {
+    const purchaseLinks = collectPurchaseLinks(rowMap);
     payload.component = {
       manufacturer: (rowMap.component_manufacturer ?? "").trim(),
-      component_type: (rowMap.component_type ?? "").trim(),
+      component_type: parseComponentType(rowMap.component_type ?? ""),
       color: (rowMap.component_color ?? "").trim(),
+      purchase_links: purchaseLinks,
     };
   }
 
@@ -265,7 +311,7 @@ export default function ItemCsvTools({ onImported }: ItemCsvToolsProps) {
     }
 
     const header = rows[0].map((h) => h.trim());
-    const requiredHeader = TYPE_HEADERS[nextItemType];
+    const requiredHeader = TYPE_REQUIRED_HEADERS[nextItemType];
     const headerMissing = requiredHeader.filter((h) => !header.includes(h));
     if (headerMissing.length > 0) {
       throw new Error(`Missing required columns: ${headerMissing.join(", ")}`);
@@ -308,10 +354,10 @@ export default function ItemCsvTools({ onImported }: ItemCsvToolsProps) {
   }
 
   function downloadTemplate(targetType: ItemType) {
-    const header = TYPE_HEADERS[targetType];
-    const sample = TEMPLATE_ROWS[targetType];
-    const content =
-      `${header.map(csvEscape).join(",")}\n${sample.map(csvEscape).join(",")}\n`;
+    const header = TYPE_TEMPLATE_HEADERS[targetType];
+    const sampleRows = TEMPLATE_ROWS[targetType];
+    const body = sampleRows.map((row) => row.map(csvEscape).join(",")).join("\n");
+    const content = `${header.map(csvEscape).join(",")}\n${body}\n`;
     const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");

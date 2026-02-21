@@ -25,11 +25,9 @@ CREATE TABLE IF NOT EXISTS items (
   stock_managed INTEGER NOT NULL DEFAULT 1 CHECK (stock_managed IN (0,1)),
   is_sellable INTEGER NOT NULL DEFAULT 0 CHECK (is_sellable IN (0,1)),
   is_final INTEGER NOT NULL DEFAULT 0 CHECK (is_final IN (0,1)),
-  output_category TEXT,
   pack_qty REAL,
   reorder_point REAL CHECK (reorder_point > 0),
   managed_unit TEXT NOT NULL CHECK (managed_unit IN ('g','pcs')),
-  rev_code TEXT,
   note TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -55,7 +53,7 @@ CREATE TABLE IF NOT EXISTS components (
   component_id INTEGER PRIMARY KEY AUTOINCREMENT,
   item_id INTEGER NOT NULL UNIQUE,
   manufacturer TEXT,
-  component_type TEXT NOT NULL DEFAULT 'material' CHECK (component_type IN ('part','material')),
+  component_type TEXT NOT NULL DEFAULT 'material' CHECK (component_type IN ('part','material','consumable')),
   color TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (item_id) REFERENCES items(item_id) ON DELETE CASCADE
@@ -73,6 +71,24 @@ CREATE TABLE IF NOT EXISTS assemblies (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (item_id) REFERENCES items(item_id) ON DELETE CASCADE
 );
+`
+
+const createComponentPurchaseLinks = `
+CREATE TABLE IF NOT EXISTS component_purchase_links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  component_id INTEGER NOT NULL,
+  url TEXT NOT NULL,
+  label TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+  FOREIGN KEY (component_id) REFERENCES components(component_id) ON DELETE CASCADE
+);
+`
+
+const createIdxComponentPurchaseLinksComponent = `
+CREATE INDEX IF NOT EXISTS idx_component_purchase_links_component
+ON component_purchase_links(component_id, sort_order, id);
 `
 
 const createStockTransactions = `
@@ -150,6 +166,12 @@ func Migrate(db *sql.DB) error {
 	if err := ensureItemsReorderPoint(db); err != nil {
 		return err
 	}
+	if err := ensureComponentsConsumable(db); err != nil {
+		return err
+	}
+	if err := ensureComponentPurchaseLinksTable(db); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -184,6 +206,133 @@ func ensureItemsReorderPoint(db *sql.DB) error {
 	}
 	if _, err := db.Exec(`ALTER TABLE items ADD COLUMN reorder_point REAL CHECK (reorder_point > 0);`); err != nil {
 		return fmt.Errorf("migration failed at add items.reorder_point: %w", err)
+	}
+	return nil
+}
+
+func ensureComponentsConsumable(db *sql.DB) error {
+	var createSQL sql.NullString
+	if err := db.QueryRow(`
+SELECT sql
+FROM sqlite_master
+WHERE type = 'table' AND name = 'components'
+`).Scan(&createSQL); err != nil {
+		return fmt.Errorf("migration failed at load components schema: %w", err)
+	}
+	if !createSQL.Valid {
+		return nil
+	}
+	if strings.Contains(strings.ToLower(createSQL.String), "'consumable'") {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("migration failed at begin components migration: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`ALTER TABLE components RENAME TO components_old;`); err != nil {
+		return fmt.Errorf("migration failed at rename components: %w", err)
+	}
+	if _, err := tx.Exec(`
+CREATE TABLE components (
+  component_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id INTEGER NOT NULL UNIQUE,
+  manufacturer TEXT,
+  component_type TEXT NOT NULL DEFAULT 'material' CHECK (component_type IN ('part','material','consumable')),
+  color TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (item_id) REFERENCES items(item_id) ON DELETE CASCADE
+);
+`); err != nil {
+		return fmt.Errorf("migration failed at recreate components: %w", err)
+	}
+	if _, err := tx.Exec(`
+INSERT INTO components(component_id, item_id, manufacturer, component_type, color, created_at)
+SELECT
+  component_id,
+  item_id,
+  manufacturer,
+  CASE
+    WHEN component_type IN ('part', 'material', 'consumable') THEN component_type
+    ELSE 'material'
+  END,
+  color,
+  created_at
+FROM components_old;
+`); err != nil {
+		return fmt.Errorf("migration failed at copy components: %w", err)
+	}
+	if _, err := tx.Exec(`DROP TABLE components_old;`); err != nil {
+		return fmt.Errorf("migration failed at drop old components: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("migration failed at commit components migration: %w", err)
+	}
+	return nil
+}
+
+func ensureComponentPurchaseLinksTable(db *sql.DB) error {
+	var createSQL sql.NullString
+	if err := db.QueryRow(`
+SELECT sql
+FROM sqlite_master
+WHERE type = 'table' AND name = 'component_purchase_links'
+`).Scan(&createSQL); err != nil {
+		if err != sql.ErrNoRows {
+			return fmt.Errorf("migration failed at load component_purchase_links schema: %w", err)
+		}
+	}
+
+	// Missing table: create with the latest schema and index.
+	if !createSQL.Valid {
+		if _, err := db.Exec(createComponentPurchaseLinks); err != nil {
+			return fmt.Errorf("migration failed at create component_purchase_links: %w", err)
+		}
+		if _, err := db.Exec(createIdxComponentPurchaseLinksComponent); err != nil {
+			return fmt.Errorf("migration failed at index component_purchase_links(component_id, sort_order, id): %w", err)
+		}
+		return nil
+	}
+
+	schema := strings.ToLower(createSQL.String)
+	needsRecreate := strings.Contains(schema, "references components_old(")
+	if !needsRecreate {
+		if _, err := db.Exec(createIdxComponentPurchaseLinksComponent); err != nil {
+			return fmt.Errorf("migration failed at index component_purchase_links(component_id, sort_order, id): %w", err)
+		}
+		return nil
+	}
+
+	// Broken FK (points to components_old): rebuild table with correct FK.
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("migration failed at begin component_purchase_links migration: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`ALTER TABLE component_purchase_links RENAME TO component_purchase_links_old;`); err != nil {
+		return fmt.Errorf("migration failed at rename component_purchase_links: %w", err)
+	}
+	if _, err := tx.Exec(createComponentPurchaseLinks); err != nil {
+		return fmt.Errorf("migration failed at recreate component_purchase_links: %w", err)
+	}
+	if _, err := tx.Exec(`
+INSERT INTO component_purchase_links(id, component_id, url, label, sort_order, created_at, enabled)
+SELECT id, component_id, url, label, sort_order, created_at, enabled
+FROM component_purchase_links_old;
+`); err != nil {
+		return fmt.Errorf("migration failed at copy component_purchase_links: %w", err)
+	}
+	if _, err := tx.Exec(`DROP TABLE component_purchase_links_old;`); err != nil {
+		return fmt.Errorf("migration failed at drop old component_purchase_links: %w", err)
+	}
+	if _, err := tx.Exec(createIdxComponentPurchaseLinksComponent); err != nil {
+		return fmt.Errorf("migration failed at index component_purchase_links(component_id, sort_order, id): %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("migration failed at commit component_purchase_links migration: %w", err)
 	}
 	return nil
 }

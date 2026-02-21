@@ -13,7 +13,7 @@ type StockSummaryRow = {
   sku: string;
   name: string;
   item_type: "component" | "assembly";
-  component_type?: "part" | "material";
+  component_type?: "part" | "material" | "consumable";
   managed_unit: "pcs" | "g";
   stock_managed: boolean;
   stock_qty: number;
@@ -30,7 +30,7 @@ export default function HomePage({ items }: HomePageProps) {
   const [stockLoading, setStockLoading] = useState(false);
   const [stockError, setStockError] = useState("");
   const [stockTypeFilter, setStockTypeFilter] = useState<
-    "all" | "assembly" | "component_material" | "component_part"
+    "all" | "assembly" | "component_material" | "component_part" | "component_consumable"
   >("all");
 
   const counts = useMemo(() => {
@@ -72,6 +72,8 @@ export default function HomePage({ items }: HomePageProps) {
           return row.item_type === "component" && (row.component_type ?? "material") === "material";
         case "component_part":
           return row.item_type === "component" && row.component_type === "part";
+        case "component_consumable":
+          return row.item_type === "component" && row.component_type === "consumable";
         default:
           return true;
       }
@@ -156,7 +158,12 @@ export default function HomePage({ items }: HomePageProps) {
               typeValue={stockTypeFilter}
               onTypeChange={(value) =>
                 setStockTypeFilter(
-                  value as "all" | "assembly" | "component_material" | "component_part",
+                  value as
+                    | "all"
+                    | "assembly"
+                    | "component_material"
+                    | "component_part"
+                    | "component_consumable",
                 )
               }
               typeOptions={[
@@ -164,6 +171,7 @@ export default function HomePage({ items }: HomePageProps) {
                 { value: "assembly", label: "assembly" },
                 { value: "component_material", label: "component(material)" },
                 { value: "component_part", label: "component(part)" },
+                { value: "component_consumable", label: "component(consumable)" },
               ]}
             />
           </div>
