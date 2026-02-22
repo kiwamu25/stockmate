@@ -315,7 +315,9 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                       <td className="p-3 text-sm text-gray-700">{item.id}</td>
                       <td className="p-3 font-mono text-sm text-gray-900">{item.sku}</td>
                       <td className="p-3 text-sm text-gray-900">{item.name}</td>
-                      <td className="p-3 text-sm capitalize text-gray-700">{item.item_type}</td>
+                      <td className="p-3 text-sm capitalize text-gray-700">
+                        {item.item_type === "component" ? (item.component?.component_type ?? "material") : "assembly"}
+                      </td>
                       <td className="p-3 text-sm text-gray-700">{item.managed_unit}</td>
                       <td className="p-3 text-sm text-gray-700">{item.is_sellable ? "Yes" : "No"}</td>
                       <td className="p-3 text-sm text-gray-700">{item.is_final ? "Yes" : "No"}</td>
