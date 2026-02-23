@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import FilterBar from "../components/FilterBar";
 import NumericStepper from "../components/NumericStepper";
-import { formatUtcTextToLocal } from "../utils/datetime";
 
 type ProductionComponent = {
   item_id: number;
@@ -17,6 +17,7 @@ type ProductionComponent = {
 export default function ProductionStockInPage() {
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | "material" | "part" | "consumable">("all");
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -76,7 +77,12 @@ export default function ProductionStockInPage() {
     });
   }
 
-  const targets = rows
+  const filteredRows = useMemo(
+    () => (typeFilter === "all" ? rows : rows.filter((row) => row.component_type === typeFilter)),
+    [rows, typeFilter],
+  );
+
+  const targets = filteredRows
     .map((row) => ({
       item_id: row.item_id,
       qty: parseQty(qtyByID[row.item_id] ?? "0"),
@@ -126,15 +132,19 @@ export default function ProductionStockInPage() {
         </div>
 
         <form onSubmit={onSearch} className="flex flex-wrap items-end gap-3 px-6 py-4">
-          <label className="min-w-[260px] flex-1 text-xs font-semibold text-gray-700">
-            Keyword
-            <input
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              value={qInput}
-              onChange={(e) => setQInput(e.target.value)}
-              placeholder="SKU / Name"
-            />
-          </label>
+          <FilterBar
+            keywordValue={qInput}
+            onKeywordChange={setQInput}
+            keywordPlaceholder="SKU / Name"
+            typeValue={typeFilter}
+            onTypeChange={(value) => setTypeFilter(value as "all" | "material" | "part" | "consumable")}
+            typeOptions={[
+              { value: "all", label: "all" },
+              { value: "material", label: "material" },
+              { value: "part", label: "part" },
+              { value: "consumable", label: "consumable" },
+            ]}
+          />
           <button
             type="submit"
             className="rounded-full bg-gray-900 px-4 py-2 text-xs font-bold text-white hover:bg-black"
@@ -146,49 +156,59 @@ export default function ProductionStockInPage() {
         {fetchError && <p className="px-6 pb-4 text-sm text-red-700">{fetchError}</p>}
         {loading && <p className="px-6 pb-4 text-sm text-gray-500">Loading...</p>}
 
-        {!loading && rows.length === 0 ? (
+        {!loading && filteredRows.length === 0 ? (
           <p className="px-6 py-8 text-sm text-gray-500">material / part / consumable がまだありません。</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-gray-100 text-left text-xs uppercase tracking-wider text-gray-600">
-                  <th className="p-3">SKU</th>
-                  <th className="p-3">Name</th>
-                  <th className="p-3">Type</th>
-                  <th className="p-3">Stock</th>
-                  <th className="p-3">Updated</th>
-                  <th className="p-3">入庫数</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.item_id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="p-3 font-mono text-sm text-gray-900">{row.sku}</td>
-                    <td className="p-3 text-sm text-gray-900">{row.name}</td>
-                    <td className="p-3 text-sm text-gray-700">component({row.component_type})</td>
-                    <td className="p-3 text-sm text-gray-700">{row.stock_qty} {row.managed_unit}</td>
-                    <td className="p-3 text-sm text-gray-700">{formatUtcTextToLocal(row.updated_at)}</td>
-                    <td className="p-3">
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => adjustByPack(row, -1)}
-                          className="h-11 rounded-full border border-gray-300 px-3 text-xs font-bold text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-                          disabled={saving || !row.pack_qty || row.pack_qty <= 0}
-                          title="pack -"
-                        >
-                          pack-
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => adjustByPack(row, 1)}
-                          className="h-11 rounded-full border border-gray-300 px-3 text-xs font-bold text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-                          disabled={saving || !row.pack_qty || row.pack_qty <= 0}
-                          title="pack +"
-                        >
-                          pack+
-                        </button>
+            <div className="lg:min-w-[980px]">
+              <div className="hidden grid-cols-[minmax(260px,1.4fr)_150px_minmax(360px,1fr)] items-center rounded-t-xl border border-gray-200 bg-gradient-to-r from-slate-50 to-cyan-50 text-left text-xs uppercase tracking-wider text-gray-600 lg:grid">
+                <div className="p-3">SKU / Name</div>
+                <div className="p-3">Stock</div>
+                <div className="p-3 text-center">入庫数</div>
+              </div>
+              <div className="space-y-2 lg:space-y-0">
+                {filteredRows.map((row) => (
+                  <div
+                    key={row.item_id}
+                    className="grid grid-cols-[minmax(0,1fr)_140px] gap-x-4 gap-y-2 rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition hover:border-cyan-200 hover:bg-cyan-50/40 lg:grid-cols-[minmax(260px,1.4fr)_150px_minmax(360px,1fr)] lg:items-center lg:gap-0 lg:rounded-none lg:border-x lg:border-b lg:border-t-0 lg:p-0 lg:shadow-none"
+                  >
+                    <div className="order-1 min-w-0 lg:p-3">
+                      <p className="font-mono text-sm text-gray-900">{row.sku}</p>
+                      <p className="mt-1 text-sm font-medium text-gray-900">{row.name}</p>
+                      <p className="mt-1 text-xs capitalize text-gray-500">{row.component_type}</p>
+                    </div>
+                    <div className="order-2 text-right text-sm text-gray-700 lg:p-3 lg:text-left">
+                      <p className="text-xs uppercase tracking-wide text-gray-500 lg:hidden">Stock</p>
+                      <p>{row.stock_qty} {row.managed_unit}</p>
+                    </div>
+                    <div className="order-3 lg:p-3">
+                      <p className="mb-1 text-xs uppercase tracking-wide text-gray-500 lg:hidden">StockIN</p>
+                      <div className="flex flex-nowrap items-center gap-2">
+                        <div className="rounded-xl border border-cyan-200 bg-cyan-50/60 p-2">
+                          <p className="text-xs text-gray-500">
+                            increment {row.pack_qty ?? 0} {row.managed_unit}
+                          </p>
+                          <div className="flex justify-between gap-1">
+                            <button
+                              type="button"
+                              onClick={() => adjustByPack(row, -1)}
+                              className="h-9 w-[45%] rounded-xl border-4 border-blue-300 px-3 text-xs font-bold text-gray-700 hover:bg-blue-50 disabled:opacity-50"
+                              disabled={saving || !row.pack_qty || row.pack_qty <= 0}
+                              title="pack -"
+                            >
+                              ➖
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => adjustByPack(row, 1)}
+                              className="h-9 w-[45%] rounded-xl border-4 border-emerald-300 px-3 text-xs font-bold text-gray-700 hover:bg-emerald-50 disabled:opacity-50"
+                              disabled={saving || !row.pack_qty || row.pack_qty <= 0}
+                              title="pack +"
+                            >
+                              ➕
+                            </button>
+                          </div>
+                        </div>
                         <NumericStepper
                           value={qtyByID[row.item_id] ?? "0"}
                           onChange={(next) =>
@@ -199,14 +219,11 @@ export default function ProductionStockInPage() {
                           disabled={saving}
                         />
                       </div>
-                      <p className="mt-1 text-xs text-gray-500">
-                        1 pack = {row.pack_qty ?? 0} {row.managed_unit}
-                      </p>
-                    </td>
-                  </tr>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            </div>
           </div>
         )}
       </div>

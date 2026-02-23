@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import FilterBar from "../components/FilterBar";
 import type { Item } from "../types/item";
 import { formatUtcTextToLocal } from "../utils/datetime";
 
@@ -7,6 +8,7 @@ type AssemblyBuilderPageProps = {
 };
 
 type SidebarListType = "assembly" | "component";
+type ModalComponentTypeFilter = "all" | "material" | "part" | "consumable";
 
 type SelectedComponent = {
   itemId: number;
@@ -70,7 +72,9 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
 
   const [modalOpen, setModalOpen] = useState(false);
   const [sidebarListType, setSidebarListType] = useState<SidebarListType>("assembly");
-  const [keyword, setKeyword] = useState("");
+  const [sidebarKeyword, setSidebarKeyword] = useState("");
+  const [modalKeyword, setModalKeyword] = useState("");
+  const [modalTypeFilter, setModalTypeFilter] = useState<ModalComponentTypeFilter>("all");
   const [searched, setSearched] = useState(false);
   const [results, setResults] = useState<Item[]>([]);
 
@@ -85,6 +89,13 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
         : items.filter((item) => isPartComponent(item)),
     [assemblies, items, sidebarListType],
   );
+  const filteredSidebarItems = useMemo(() => {
+    const q = sidebarKeyword.trim().toLowerCase();
+    if (!q) return sidebarItems;
+    return sidebarItems.filter(
+      (item) => item.sku.toLowerCase().includes(q) || item.name.toLowerCase().includes(q),
+    );
+  }, [sidebarItems, sidebarKeyword]);
 
   useEffect(() => {
     // Avoid updating a different parent item by mistake after switching list type.
@@ -143,13 +154,18 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
     setModalOpen(true);
     setSearched(false);
     setResults([]);
-    setKeyword("");
+    setModalKeyword("");
+    setModalTypeFilter("all");
   }
 
   function runSearch() {
-    const q = keyword.trim().toLowerCase();
+    const q = modalKeyword.trim().toLowerCase();
     const filtered = items
       .filter((item) => isAnyComponent(item))
+      .filter((item) => {
+        if (modalTypeFilter === "all") return true;
+        return (item.component?.component_type ?? "material") === modalTypeFilter;
+      })
       .filter((item) => {
         if (!selectedParentId) return true;
         return item.id !== selectedParentId;
@@ -306,64 +322,68 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
   }
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-10 md:px-6">
-      <div className="rounded-3xl border border-cyan-200 bg-gradient-to-br from-cyan-50 via-white to-amber-50 p-6 shadow-sm md:p-8">
-        <h1 className="text-2xl font-black tracking-tight text-gray-900 md:text-4xl">
+    <main className="mx-auto w-full max-w-7xl px-4 py-1 md:px-6">
+      <div className="rounded-lg border border-cyan-200 bg-gradient-to-br from-cyan-50 via-white to-amber-50 p-4 shadow-sm md:p-6">
+        <h1 className="text-xl font-black tracking-tight text-gray-900 md:text-2xl">
           Component Combination
         </h1>
-        <p className="mt-2 text-sm text-gray-700 md:text-base">
+        <p className="text-sm text-gray-700 md:text-base">
           アセンブリに対して component / assembly を組み合わせて登録します。
         </p>
       </div>
 
-      <section className="mt-6 grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section className="mt-6 grid gap-6 lg:grid-cols-10">
+        <aside className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm lg:sticky lg:top-4 lg:col-span-4 lg:self-start">
           <h2 className="text-sm font-bold uppercase tracking-wide text-gray-700">Left List</h2>
-          <label className="mt-3 block text-xs font-semibold text-gray-700">
-            Type
-            <select
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              value={sidebarListType}
-              onChange={(e) => setSidebarListType(e.target.value as SidebarListType)}
-            >
-              <option value="assembly">assembly</option>
-              <option value="component">component</option>
-            </select>
-          </label>
+          <div className="mt-3">
+            <FilterBar
+              typeValue={sidebarListType}
+              onTypeChange={(value) => setSidebarListType(value as SidebarListType)}
+              typeOptions={[
+                { value: "assembly", label: "assembly" },
+                { value: "component", label: "component(part)" },
+              ]}
+              keywordValue={sidebarKeyword}
+              onKeywordChange={setSidebarKeyword}
+              keywordPlaceholder="SKU or Name"
+            />
+          </div>
           <p className="mt-2 text-xs text-gray-500">
             {sidebarListType === "assembly"
               ? "assembly を選択してBOM編集対象を切り替えます。"
               : "component(part) を選択してBOM編集対象を切り替えます。"}
           </p>
-          <div className="mt-3 max-h-[560px] space-y-2 overflow-auto pr-1">
-            {sidebarItems.map((item) => (
+          <div className="mt-3 max-h-[300px] space-y-2 overflow-y-auto overflow-x-hidden pr-1">
+            {filteredSidebarItems.map((item) => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => {
                   setSelectedParentId(item.id);
                 }}
-                className={`w-full rounded-xl border px-3 py-2 text-left transition ${selectedParentId === item.id
+                className={`w-full rounded-md border px-3 py-2 text-left transition ${selectedParentId === item.id
                     ? "border-amber-300 bg-amber-50"
                     : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                   }`}
               >
-                <p className="font-mono text-xs text-gray-500">{item.sku}</p>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-mono text-xs text-gray-500">{item.sku}</p>
+                  <p className="text-right text-xs capitalize text-gray-500">
+                    {item.item_type === "component" ? (item.component?.component_type ?? "material") : "assembly"}
+                  </p>
+                </div>
                 <p className="text-sm font-semibold text-gray-900">{item.name}</p>
-                {sidebarListType === "component" && (
-                  <p className="text-xs text-gray-500">{item.component?.component_type ?? "-"}</p>
-                )}
               </button>
             ))}
-            {sidebarItems.length === 0 && (
+            {filteredSidebarItems.length === 0 && (
               <p className="text-sm text-gray-500">
-                {sidebarListType === "assembly" ? "assembly がありません。" : "component がありません。"}
+                {sidebarListType === "assembly" ? "assembly がありません。" : "component(part) がありません。"}
               </p>
             )}
           </div>
         </aside>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm lg:sticky lg:top-4 lg:col-span-6 lg:max-h-[calc(100vh-2rem)] lg:self-start lg:overflow-y-auto">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-4">
             <div>
               <h2 className="text-lg font-black text-gray-900">Components</h2>
@@ -401,7 +421,7 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
                 type="button"
                 onClick={deleteCurrentRevision}
                 disabled={!selectedParent || !currentRevNo || deleting || loading}
-                className="rounded-full border border-red-300 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-md border border-red-300 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {deleting ? "削除中..." : "rev削除"}
               </button>
@@ -411,90 +431,97 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
 
           {loading && <p className="py-8 text-sm text-gray-500">読み込み中...</p>}
 
-          {!loading && components.length === 0 && (
-            <p className="py-12 text-center text-sm text-gray-500">右側はまだ空です。Add で追加してください。</p>
-          )}
+          {!loading && (
+            <div className="mt-4 rounded-lg border border-sky-100 bg-sky-50/60 p-4">
+              {components.length === 0 && (
+                <p className="py-12 text-center text-sm text-gray-500">右側はまだ空です。Add で追加してください。</p>
+              )}
 
-          {!loading && components.length > 0 && (
-            <div className="mt-4 space-y-3">
-              {components.map((component) => (
-                <div key={component.itemId} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-mono text-xs text-gray-500">{component.sku}</p>
-                      <p className="text-sm font-bold text-gray-900">{component.name}</p>
+              {components.length > 0 && (
+                <div className="space-y-3">
+                  {components.map((component) => (
+                    <div key={component.itemId} className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-mono text-xs text-gray-500">{component.sku}</p>
+                          <p className="text-sm font-bold text-gray-900">{component.name}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeComponent(component.itemId)}
+                          className="text-xs font-bold text-red-600 hover:text-red-700"
+                        >
+                          Remove
+                        </button>
+                      </div>
+
+                      <div className="mt-3 grid gap-3 md:grid-cols-[140px_100px_minmax(0,1fr)]">
+                        <label className="text-xs font-semibold text-gray-700">
+                          Qty / 1 assy *
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            value={component.qtyPerUnit}
+                            onChange={(e) =>
+                              updateComponent(component.itemId, {
+                                qtyPerUnit: e.target.value,
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="text-xs font-semibold text-gray-700">
+                          Unit
+                          <input
+                            className="mt-1 w-full rounded-lg border border-gray-200 bg-gray-100 px-3 py-2 text-sm"
+                            value={component.unit}
+                            readOnly
+                          />
+                        </label>
+                        <label className="text-xs font-semibold text-gray-700">
+                          Note
+                          <input
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            value={component.note}
+                            onChange={(e) =>
+                              updateComponent(component.itemId, {
+                                note: e.target.value,
+                              })
+                            }
+                            placeholder="optional"
+                          />
+                        </label>
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => removeComponent(component.itemId)}
-                      className="text-xs font-bold text-red-600 hover:text-red-700"
-                    >
-                      Remove
-                    </button>
-                  </div>
-
-                  <div className="mt-3 grid gap-3 md:grid-cols-[140px_100px_minmax(0,1fr)]">
-                    <label className="text-xs font-semibold text-gray-700">
-                      Qty / 1 assy *
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                        value={component.qtyPerUnit}
-                        onChange={(e) =>
-                          updateComponent(component.itemId, {
-                            qtyPerUnit: e.target.value,
-                          })
-                        }
-                      />
-                    </label>
-                    <label className="text-xs font-semibold text-gray-700">
-                      Unit
-                      <input
-                        className="mt-1 w-full rounded-lg border border-gray-200 bg-gray-100 px-3 py-2 text-sm"
-                        value={component.unit}
-                        readOnly
-                      />
-                    </label>
-                    <label className="text-xs font-semibold text-gray-700">
-                      Note
-                      <input
-                        className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                        value={component.note}
-                        onChange={(e) =>
-                          updateComponent(component.itemId, {
-                            note: e.target.value,
-                          })
-                        }
-                        placeholder="optional"
-                      />
-                    </label>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              )}
+
+              <div className="mt-4 flex justify-center">
+                <button
+                  type="button"
+                  onClick={openModal}
+                  disabled={!selectedParent}
+                  className="rounded-md bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                >
+                  Component Add
+                </button>
+              </div>
             </div>
           )}
 
-          <div className="mt-4 flex items-center gap-3">
-            <button
-              type="button"
-              onClick={openModal}
-              disabled={!selectedParent}
-              className="rounded-full bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-            >
-              Component Add
-            </button>
+          <div className="mt-4 flex justify-end">
             <button
               type="button"
               onClick={registerComponents}
               disabled={saving || !selectedParent}
-              className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+              className="rounded-md bg-emerald-600 px-5 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
             >
-              {saving ? "登録中..." : "登録(RevUp)"}
+              {saving ? "保存中..." : "保存"}
             </button>
-            {message && <span className="text-sm text-emerald-700">{message}</span>}
           </div>
+          {message && <p className="mt-2 text-right text-sm text-emerald-700">{message}</p>}
 
           {error && <div className="mt-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
         </div>
@@ -502,31 +529,38 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
 
       {modalOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-5 shadow-xl">
+          <div className="w-full max-w-2xl rounded-lg border border-gray-200 bg-white p-5 shadow-xl">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-black text-gray-900">コンポーネント検索</h3>
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                className="rounded-full border border-gray-300 px-3 py-1 text-xs font-bold text-gray-700 hover:bg-gray-50"
+                className="rounded-md border border-gray-300 px-3 py-1 text-xs font-bold text-gray-700 hover:bg-gray-50"
               >
                 Close
               </button>
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_120px]">
-              <div className="text-xs font-semibold text-gray-700">
+              <label className="text-xs font-semibold text-gray-700">
                 Type
-                <p className="mt-1 rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-700">
-                  component (part/material/consumable)
-                </p>
-              </div>
+                <select
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-normal"
+                  value={modalTypeFilter}
+                  onChange={(e) => setModalTypeFilter(e.target.value as ModalComponentTypeFilter)}
+                >
+                  <option value="all">all component</option>
+                  <option value="material">material</option>
+                  <option value="part">part</option>
+                  <option value="consumable">consumable</option>
+                </select>
+              </label>
               <label className="text-xs font-semibold text-gray-700">
                 Keyword
                 <input
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
+                  value={modalKeyword}
+                  onChange={(e) => setModalKeyword(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -539,7 +573,7 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
               <button
                 type="button"
                 onClick={runSearch}
-                className="mt-[18px] rounded-lg bg-gray-900 px-3 py-2 text-sm font-bold text-white hover:bg-black"
+                className="mt-[18px] rounded-md bg-gray-900 px-3 py-2 text-sm font-bold text-white hover:bg-black"
               >
                 検索
               </button>
@@ -550,13 +584,13 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
             )}
 
             {searched && (
-              <div className="mt-4 max-h-[360px] space-y-2 overflow-auto rounded-xl border border-gray-200 p-2">
+              <div className="mt-4 max-h-[360px] space-y-2 overflow-auto rounded-lg border border-gray-200 p-2">
                 {results.map((item) => (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => selectItem(item)}
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-left hover:border-amber-300 hover:bg-amber-50"
+                    className="w-full rounded-md border border-gray-200 px-3 py-2 text-left hover:border-amber-300 hover:bg-amber-50"
                   >
                     <p className="font-mono text-xs text-gray-500">{item.sku}</p>
                     <p className="text-sm font-semibold text-gray-900">{item.name}</p>

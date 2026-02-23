@@ -255,7 +255,7 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-10 md:px-6">
-      <div className="2xl:grid 2xl:grid-cols-[minmax(0,1fr)_460px] 2xl:items-start 2xl:gap-5">
+      <div className="md:grid md:grid-cols-[minmax(0,1fr)_460px] md:items-start md:gap-5">
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
             <h1 className="text-xl font-black text-gray-900">Items</h1>
@@ -265,6 +265,7 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                 keywordValue={keyword}
                 onKeywordChange={setKeyword}
                 keywordPlaceholder="sku / name"
+                direction="column"
                 typeValue={typeFilter}
                 onTypeChange={(value) =>
                   setTypeFilter(value as "all" | "assembly" | "material" | "part" | "consumable")
@@ -289,59 +290,39 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
           {filteredItems.length === 0 ? (
             <p className="px-6 py-8 text-gray-500">No items yet.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="bg-gray-100 text-left text-xs uppercase tracking-wider text-gray-600">
-                    <th className="p-3">ID</th>
-                    <th className="p-3">SKU</th>
-                    <th className="p-3">Name</th>
-                    <th className="p-3">Type</th>
-                    <th className="p-3">Unit</th>
-                    <th className="p-3">Sellable</th>
-                    <th className="p-3">Final</th>
-                    <th className="p-3">Managed</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredItems.map((item) => (
-                    <tr
-                      key={item.id}
-                      onClick={() => selectItem(item.id)}
-                      className={`cursor-pointer border-b border-gray-100 ${
-                        selectedId === item.id ? "bg-amber-50" : "hover:bg-gray-50"
-                      }`}
-                    >
-                      <td className="p-3 text-sm text-gray-700">{item.id}</td>
-                      <td className="p-3 font-mono text-sm text-gray-900">{item.sku}</td>
-                      <td className="p-3 text-sm text-gray-900">{item.name}</td>
-                      <td className="p-3 text-sm capitalize text-gray-700">
-                        {item.item_type === "component" ? (item.component?.component_type ?? "material") : "assembly"}
-                      </td>
-                      <td className="p-3 text-sm text-gray-700">{item.managed_unit}</td>
-                      <td className="p-3 text-sm text-gray-700">{item.is_sellable ? "Yes" : "No"}</td>
-                      <td className="p-3 text-sm text-gray-700">{item.is_final ? "Yes" : "No"}</td>
-                      <td className="p-3 text-sm">
-                        {item.stock_managed ? (
-                          <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-700">
-                            Yes
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-gray-100 px-2 py-1 text-gray-500">
-                            No
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="max-h-[400px] overflow-y-auto 2xl:max-h-none">
+              <div className="overflow-x-auto">
+                <div className="min-w-[360px]">
+                  <div className="grid grid-cols-[80px_minmax(0,1fr)] bg-gray-100 text-left text-xs uppercase tracking-wider text-gray-600">
+                    <div className="p-3">ID</div>
+                    <div className="p-3">SKU</div>
+                  </div>
+                  <div className="bg-blue-100">
+                    {filteredItems.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => selectItem(item.id)}
+                        className={`grid w-full grid-cols-[80px_minmax(0,1fr)] border-4 rounded-xl border-gray-100 text-left ${
+                          selectedId === item.id ? "border-blue-400 bg-blue-200"  : "hover:bg-blue-50"
+                        }`}
+                      >
+                        <div className="p-3 m-2 rounded-xl font-bold text-center flex items-center justify-center text-sm text-gray-700 bg-blue-300">{item.id}</div>
+                        <div className="p-3">
+                          <p className="font-mono border-b border-blue-600 max-w-[300px] text-sm text-gray-900">{item.sku}</p>
+                          <p className="mt-1 text-lg font-bold text-gray-900">{item.name}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
 
         {selectedItem && (
-          <section className="mt-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm 2xl:sticky 2xl:top-24 2xl:mt-0">
+          <section className="mt-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm md:sticky md:top-24 md:mt-0">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold text-gray-900">Item Detail</h2>

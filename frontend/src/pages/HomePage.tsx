@@ -36,6 +36,7 @@ export default function HomePage({ items }: HomePageProps) {
   const [stockLoading, setStockLoading] = useState(false);
   const [stockError, setStockError] = useState("");
   const [openLinksItemID, setOpenLinksItemID] = useState<number | null>(null);
+  const [stockKeyword, setStockKeyword] = useState("");
   const [stockTypeFilter, setStockTypeFilter] = useState<
     "all" | "assembly" | "component_material" | "component_part" | "component_consumable"
   >("all");
@@ -77,7 +78,14 @@ export default function HomePage({ items }: HomePageProps) {
       }
     });
 
-    return typedRows.sort((a, b) => {
+    const q = stockKeyword.trim().toLowerCase();
+    const keywordRows = q
+      ? typedRows.filter(
+          (row) => row.sku.toLowerCase().includes(q) || row.name.toLowerCase().includes(q),
+        )
+      : typedRows;
+
+    return keywordRows.sort((a, b) => {
       const aIsZero = a.reorder_point === 0;
       const bIsZero = b.reorder_point === 0;
       if (aIsZero !== bIsZero) return aIsZero ? 1 : -1;
@@ -85,7 +93,7 @@ export default function HomePage({ items }: HomePageProps) {
       if (a.stock_qty !== b.stock_qty) return a.stock_qty - b.stock_qty;
       return a.item_id - b.item_id;
     });
-  }, [items, stockRows, stockTypeFilter]);
+  }, [items, stockKeyword, stockRows, stockTypeFilter]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -131,6 +139,9 @@ export default function HomePage({ items }: HomePageProps) {
               <p className="mt-1 text-xs text-gray-500">管理対象（stock managed = true）のみ表示</p>
             </div>
             <FilterBar
+              keywordValue={stockKeyword}
+              onKeywordChange={setStockKeyword}
+              keywordPlaceholder="sku / name"
               typeValue={stockTypeFilter}
               onTypeChange={(value) =>
                 setStockTypeFilter(
