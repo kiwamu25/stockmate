@@ -245,7 +245,7 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
     setMessage("");
 
     if (!selectedParentId) {
-      setError("左から対象アイテムを選択してください。");
+      setError("左のリストから対象アイテムを選択してください。");
       return;
     }
 
@@ -323,18 +323,18 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-1 md:px-6">
-      <div className="rounded-lg border border-cyan-200 bg-gradient-to-br from-cyan-50 via-white to-amber-50 p-4 shadow-sm md:p-6">
+      <div className="rounded-lg border border-cyan-200 bg-gradient-to-br from-cyan-50 via-white to-amber-50 p-2 shadow-sm">
         <h1 className="text-xl font-black tracking-tight text-gray-900 md:text-2xl">
           Component Combination
         </h1>
-        <p className="text-sm text-gray-700 md:text-base">
-          アセンブリに対して component / assembly を組み合わせて登録します。
+        <p className="text-xs text-gray-700 px-3">
+          component / assembly の生産、出荷時の材料使用量、部品使用量の登録をします。
         </p>
       </div>
 
       <section className="mt-6 grid gap-6 lg:grid-cols-10">
         <aside className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm lg:sticky lg:top-4 lg:col-span-4 lg:self-start">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-gray-700">Left List</h2>
+          <h2 className="text-sm border-b border-gray-200 font-bold tracking-wide text-gray-700">Base List</h2>
           <div className="mt-3">
             <FilterBar
               typeValue={sidebarListType}
@@ -353,7 +353,7 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
               ? "assembly を選択してBOM編集対象を切り替えます。"
               : "component(part) を選択してBOM編集対象を切り替えます。"}
           </p>
-          <div className="mt-3 max-h-[300px] space-y-2 overflow-y-auto overflow-x-hidden pr-1">
+          <div className="mt-3 sm:max-h-[calc(100vh/2)] md:max-h-[300px] max-h-[200px] space-y-2 overflow-y-auto overflow-x-hidden pr-1">
             {filteredSidebarItems.map((item) => (
               <button
                 key={item.id}
@@ -362,8 +362,8 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
                   setSelectedParentId(item.id);
                 }}
                 className={`w-full rounded-md border px-3 py-2 text-left transition ${selectedParentId === item.id
-                    ? "border-amber-300 bg-amber-50"
-                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                  ? "border-amber-300 bg-amber-50"
+                  : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                   }`}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -384,18 +384,19 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
         </aside>
 
         <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm lg:sticky lg:top-4 lg:col-span-6 lg:max-h-[calc(100vh-2rem)] lg:self-start lg:overflow-y-auto">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-4">
+          <div className="flex flex-wrap items-center flex-row justify-between gap-3 border-b border-gray-100 pb-4">
             <div>
-              <h2 className="text-lg font-black text-gray-900">Components</h2>
+              <h2 className="border-b border-gray-200 font-black text-gray-900">Components</h2>
               <p className="text-xs text-gray-500">
                 {selectedParent
-                  ? `${selectedParent.sku} | ${selectedParent.name}`
-                  : "左から対象アイテムを選択してください"}
-              </p>
-              <p className="text-xs text-gray-500">
-                {currentRevNo
-                  ? `現在: rev ${currentRevNo} (${formatUtcTextToLocal(currentCreatedAt)})`
-                  : "現在: rev なし"}
+                  ? (
+                    <>
+                      {selectedParent.sku}
+                      <br />
+                      {selectedParent.name}
+                    </>
+                  )
+                  : "BaseListから対象アイテムを選択してください"}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -429,87 +430,85 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
             </div>
           </div>
 
-          {loading && <p className="py-8 text-sm text-gray-500">読み込み中...</p>}
+          <div className="relative mt-4 rounded-lg border border-sky-100 bg-sky-50/60 p-4">
+            {components.length === 0 && (
+              <p className="py-12 text-center text-sm text-gray-500">componentが選択されていません。Add で追加してください。</p>
+            )}
 
-          {!loading && (
-            <div className="mt-4 rounded-lg border border-sky-100 bg-sky-50/60 p-4">
-              {components.length === 0 && (
-                <p className="py-12 text-center text-sm text-gray-500">右側はまだ空です。Add で追加してください。</p>
-              )}
-
-              {components.length > 0 && (
-                <div className="space-y-3">
-                  {components.map((component) => (
-                    <div key={component.itemId} className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-mono text-xs text-gray-500">{component.sku}</p>
-                          <p className="text-sm font-bold text-gray-900">{component.name}</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeComponent(component.itemId)}
-                          className="text-xs font-bold text-red-600 hover:text-red-700"
-                        >
-                          Remove
-                        </button>
+            {components.length > 0 && (
+              <div className="space-y-3">
+                {components.map((component) => (
+                  <div key={component.itemId} className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-mono text-xs text-gray-500">{component.sku}</p>
+                        <p className="text-sm font-bold text-gray-900">{component.name}</p>
                       </div>
-
-                      <div className="mt-3 grid gap-3 md:grid-cols-[140px_100px_minmax(0,1fr)]">
-                        <label className="text-xs font-semibold text-gray-700">
-                          Qty / 1 assy *
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                            value={component.qtyPerUnit}
-                            onChange={(e) =>
-                              updateComponent(component.itemId, {
-                                qtyPerUnit: e.target.value,
-                              })
-                            }
-                          />
-                        </label>
-                        <label className="text-xs font-semibold text-gray-700">
-                          Unit
-                          <input
-                            className="mt-1 w-full rounded-lg border border-gray-200 bg-gray-100 px-3 py-2 text-sm"
-                            value={component.unit}
-                            readOnly
-                          />
-                        </label>
-                        <label className="text-xs font-semibold text-gray-700">
-                          Note
-                          <input
-                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                            value={component.note}
-                            onChange={(e) =>
-                              updateComponent(component.itemId, {
-                                note: e.target.value,
-                              })
-                            }
-                            placeholder="optional"
-                          />
-                        </label>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeComponent(component.itemId)}
+                        className="text-xs font-bold text-red-600 hover:text-red-700"
+                      >
+                        Remove
+                      </button>
                     </div>
-                  ))}
-                </div>
-              )}
 
-              <div className="mt-4 flex justify-center">
-                <button
-                  type="button"
-                  onClick={openModal}
-                  disabled={!selectedParent}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-                >
-                  Component Add
-                </button>
+                    <div className="mt-3 grid gap-3 md:grid-cols-[140px_100px_minmax(0,1fr)]">
+                      <label className="text-xs font-semibold text-gray-700">
+                        Qty / 1 assy *
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          value={component.qtyPerUnit}
+                          onChange={(e) =>
+                            updateComponent(component.itemId, {
+                              qtyPerUnit: e.target.value,
+                            })
+                          }
+                        />
+                      </label>
+                      <label className="text-xs font-semibold text-gray-700">
+                        Unit
+                        <input
+                          className="mt-1 w-full rounded-lg border border-gray-200 bg-gray-100 px-3 py-2 text-sm"
+                          value={component.unit}
+                          readOnly
+                        />
+                      </label>
+                      <label className="text-xs font-semibold text-gray-700">
+                        Note
+                        <input
+                          className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          value={component.note}
+                          onChange={(e) =>
+                            updateComponent(component.itemId, {
+                              note: e.target.value,
+                            })
+                          }
+                          placeholder="optional"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ))}
               </div>
+            )}
+
+            <div className="mt-4 flex justify-center">
+              <button
+                type="button"
+                onClick={openModal}
+                disabled={!selectedParent}
+                className="rounded-md bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+              >
+                Component Add
+              </button>
             </div>
-          )}
+
+      
+          </div>
 
           <div className="mt-4 flex justify-end">
             <button

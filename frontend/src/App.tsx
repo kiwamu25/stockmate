@@ -42,9 +42,10 @@ export default function App() {
         <Route path="/items/new" element={<CreateItemPage />} />
         <Route path="/production/stock-in" element={<ProductionStockInPage />} />
         <Route path="/production/parts" element={<PartsProductionPage />} />
-        <Route path="/production/shipments" element={<ProductionShipmentsPage />} />
         <Route path="/assemblies/builder" element={<AssemblyBuilderPage items={items} />} />
         <Route path="/assemblies/adjust" element={<AssemblyStockAdjustPage />} />
+        <Route path="/manufacturing/parts" element={<PartsProductionPage />} />
+        <Route path="/manufacturing/shipments" element={<ProductionShipmentsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>

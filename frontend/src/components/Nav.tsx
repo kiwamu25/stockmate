@@ -8,7 +8,6 @@ export default function Nav() {
 
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [openGroup, setOpenGroup] = useState<string | null>(null);
   const navRootRef = useRef<HTMLElement | null>(null);
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `rounded-lg px-3 py-2 text-sm font-semibold transition ${
@@ -24,35 +23,28 @@ export default function Nav() {
     }`;
   const groups: NavMenuGroup[] = [
     {
-      key: "items",
-      label: "Items",
+      key: "settings",
+      label: "基本の設定",
       links: [
-        { to: "/items", label: "Items", end: true },
-        { to: "/items/new", label: "Create" },
+        { to: "/items", label: "items-edit", end: true },
+        { to: "/items/new", label: "items-create" },
+        { to: "/production/stock-in", label: "stock-in" },
+        { to: "/assemblies/adjust", label: "assemblies-adjust" },
+        { to: "/assemblies/builder", label: "assemblies-builder" },
       ],
     },
     {
-      key: "production",
-      label: "Production",
+      key: "manufacturing",
+      label: "生産ー出荷",
       links: [
-        { to: "/production/stock-in", label: "Stock In" },
-        { to: "/production/parts", label: "Parts" },
-        { to: "/production/shipments", label: "Shipping" },
-      ],
-    },
-    {
-      key: "assemblies",
-      label: "Assemblies",
-      links: [
-        { to: "/assemblies/builder", label: "Builder" },
-        { to: "/assemblies/adjust", label: "Adjust" },
+        { to: "/manufacturing/parts", label: "Parts生産" },
+        { to: "/manufacturing/shipments", label: "出荷" },
       ],
     },
   ];
 
   useEffect(() => {
     setMenuOpen(false);
-    setOpenGroup(null);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -61,7 +53,6 @@ export default function Nav() {
       if (!target) return;
       if (navRootRef.current?.contains(target)) return;
       setMenuOpen(false);
-      setOpenGroup(null);
     }
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("touchstart", onPointerDown);
@@ -77,7 +68,7 @@ export default function Nav() {
         <div className="relative flex items-center justify-center sm:justify-between">
           <button
             type="button"
-            className="absolute left-0 rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold text-white sm:hidden"
+            className="absolute left-0 rounded-lg border border-white/2 px-3 py-2 text-sm font-semibold text-white sm:hidden"
             onClick={() => setMenuOpen((v) => !v)}
             aria-label="Toggle menu"
             aria-expanded={menuOpen}
@@ -86,11 +77,11 @@ export default function Nav() {
           </button>
           <Link to="/" className="inline-flex items-center gap-2 text-center sm:text-left">
             <img
-              src="/stockmate-icon.svg"
+              src="/favicon.svg"
               alt="Stockmate"
-              className="h-7 w-7 rounded-md bg-white/95 p-0.5 shadow-sm"
+              className="h-9 w-9 rounded-md  p-0.5 shadow-sm"
             />
-            <span className="text-lg font-black tracking-tight text-orange-400">stockmate</span>
+            <span className="text-lg font-black tracking-tight text-orange-300 drop-shadow-sm">StockMate</span>
           </Link>
         </div>
 
@@ -99,31 +90,19 @@ export default function Nav() {
             {dashboardLink.label}
           </NavLink>
           {groups.map((group) => (
-            <div key={group.key} className="relative">
-              <button
-                type="button"
-                className="rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
-                onClick={() => setOpenGroup((prev) => (prev === group.key ? null : group.key))}
-              >
+            <div key={group.key} className="group relative">
+              <div className="rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold text-white transition hover:bg-white/20">
                 {group.label}
-              </button>
-              {openGroup === group.key && (
-                <div className="absolute left-0 mt-2 w-44 rounded-lg border border-white/20 bg-gray-900 p-2 shadow-xl">
-                  <div className="grid gap-1">
-                    {group.links.map((link) => (
-                      <NavLink
-                        key={link.to}
-                        to={link.to}
-                        end={link.end}
-                        className={linkClass}
-                        onClick={() => setOpenGroup(null)}
-                      >
-                        {link.label}
-                      </NavLink>
-                    ))}
-                  </div>
+              </div>
+              <div className="pointer-events-none invisible absolute left-0 top-full w-48 pt-2 opacity-0 transition group-hover:pointer-events-auto group-hover:visible group-hover:opacity-100">
+                <div className="grid gap-1 rounded-lg border border-white/20 bg-gray-900 p-2 shadow-xl">
+                  {group.links.map((link) => (
+                    <NavLink key={link.to} to={link.to} end={link.end} className={linkClass}>
+                      {link.label}
+                    </NavLink>
+                  ))}
                 </div>
-              )}
+              </div>
             </div>
           ))}
         </nav>
