@@ -170,23 +170,28 @@ export default function ProductionStockInPage() {
                 {filteredRows.map((row) => (
                   <div
                     key={row.item_id}
-                    className="grid grid-cols-[minmax(0,1fr)_140px] gap-x-4 gap-y-2 rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition hover:border-cyan-200 hover:bg-cyan-50/40 lg:grid-cols-[minmax(260px,1.4fr)_150px_minmax(360px,1fr)] lg:items-center lg:gap-0 lg:rounded-none lg:border-x lg:border-b lg:border-t-0 lg:p-0 lg:shadow-none"
+                    className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition hover:border-cyan-200 hover:bg-cyan-50/40 lg:grid lg:grid-cols-[minmax(260px,1.4fr)_150px_minmax(360px,1fr)] lg:items-center lg:gap-0 lg:rounded-none lg:border-x lg:border-b lg:border-t-0 lg:p-0 lg:shadow-none"
                   >
-                    <div className="order-1 min-w-0 lg:p-3">
-                      <p className="font-mono text-sm text-gray-900">{row.sku}</p>
-                      <p className="mt-1 text-sm font-medium text-gray-900">{row.name}</p>
-                      <p className="mt-1 text-xs capitalize text-gray-500">{row.component_type}</p>
+                    <div className="flex items-start justify-between gap-3 lg:block lg:p-3">
+                      <div className="min-w-0">
+                        <p className="font-mono text-sm text-gray-900">{row.sku}</p>
+                        <p className="mt-1 text-sm font-medium text-gray-900">{row.name}</p>
+                        <p className="mt-1 text-xs capitalize text-gray-500">{row.component_type}</p>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-right text-sm text-gray-700 lg:hidden">
+                        <p className="text-[10px] uppercase tracking-wide text-gray-500">Stock</p>
+                        <p>{row.stock_qty} {row.managed_unit}</p>
+                      </div>
                     </div>
-                    <div className="order-2 text-right text-sm text-gray-700 lg:p-3 lg:text-left">
-                      <p className="text-xs uppercase tracking-wide text-gray-500 lg:hidden">Stock</p>
+                    <div className="hidden text-sm text-gray-700 lg:block lg:p-3 lg:text-left">
                       <p>{row.stock_qty} {row.managed_unit}</p>
                     </div>
-                    <div className="order-3 lg:p-3">
-                      <p className="mb-1 text-xs uppercase tracking-wide text-gray-500 lg:hidden">StockIN</p>
+                    <div className="mt-3 border-t border-slate-100 pt-3 lg:mt-0 lg:border-t-0 lg:p-3 lg:pt-0">
+                      <p className="mb-2 text-xs uppercase tracking-wide text-gray-500 lg:hidden">StockIN</p>
                       <div className="flex flex-nowrap items-center gap-2">
                         <div className="rounded-xl border border-cyan-200 bg-cyan-50/60 p-2">
-                          <p className="text-xs text-gray-500">
-                            increment {row.pack_qty ?? 0} {row.managed_unit}
+                          <p className="text-xs text-gray-500 text-center mb-1">
+                            step {row.pack_qty ?? 0} {row.managed_unit}
                           </p>
                           <div className="flex justify-between gap-1">
                             <button

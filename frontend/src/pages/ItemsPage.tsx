@@ -71,7 +71,8 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
 
   const filteredItems = useMemo(() => {
     const q = keyword.trim().toLowerCase();
-    return localItems.filter((item) => {
+    return localItems
+      .filter((item) => {
       if (typeFilter === "assembly" && item.item_type !== "assembly") return false;
       if (typeFilter === "material") {
         if (item.item_type !== "component") return false;
@@ -88,7 +89,8 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
 
       if (!q) return true;
       return item.sku.toLowerCase().includes(q) || item.name.toLowerCase().includes(q);
-    });
+      })
+      .sort((a, b) => a.id - b.id);
   }, [keyword, localItems, typeFilter]);
 
   function selectItem(id: number) {
@@ -220,27 +222,27 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
             assembly:
               item.item_type === "assembly"
                 ? {
-                    manufacturer: editForm.assembly_manufacturer.trim() || undefined,
-                    total_weight: totalWeight ?? undefined,
-                    pack_size: editForm.assembly_pack_size.trim() || undefined,
-                    note: editForm.assembly_note.trim() || undefined,
-                  }
+                  manufacturer: editForm.assembly_manufacturer.trim() || undefined,
+                  total_weight: totalWeight ?? undefined,
+                  pack_size: editForm.assembly_pack_size.trim() || undefined,
+                  note: editForm.assembly_note.trim() || undefined,
+                }
                 : item.assembly,
             component:
               item.item_type === "component"
                 ? {
-                    manufacturer: editForm.component_manufacturer.trim() || undefined,
-                    component_type: editForm.component_type,
-                    color: editForm.component_color.trim() || undefined,
-                    purchase_links: editForm.component_purchase_links
-                      .map((link, idx) => ({
-                        url: link.url.trim(),
-                        label: link.label.trim() || undefined,
-                        sort_order: idx,
-                        enabled: true,
-                      }))
-                      .filter((row) => row.url !== ""),
-                  }
+                  manufacturer: editForm.component_manufacturer.trim() || undefined,
+                  component_type: editForm.component_type,
+                  color: editForm.component_color.trim() || undefined,
+                  purchase_links: editForm.component_purchase_links
+                    .map((link, idx) => ({
+                      url: link.url.trim(),
+                      label: link.label.trim() || undefined,
+                      sort_order: idx,
+                      enabled: true,
+                    }))
+                    .filter((row) => row.url !== ""),
+                }
                 : item.component,
           };
         }),
@@ -303,9 +305,8 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
                         key={item.id}
                         type="button"
                         onClick={() => selectItem(item.id)}
-                        className={`grid w-full grid-cols-[80px_minmax(0,1fr)] border-4 rounded-xl border-gray-100 text-left ${
-                          selectedId === item.id ? "border-blue-400 bg-blue-200"  : "hover:bg-blue-50"
-                        }`}
+                        className={`grid w-full grid-cols-[80px_minmax(0,1fr)] border-4 rounded-xl border-gray-100 text-left ${selectedId === item.id ? "border-blue-400 bg-blue-200" : "hover:bg-blue-50"
+                          }`}
                       >
                         <div className="p-3 m-2 rounded-xl font-bold text-center flex items-center justify-center text-sm text-gray-700 bg-blue-300">{item.id}</div>
                         <div className="p-3">
@@ -321,287 +322,292 @@ export default function ItemsPage({ items, error }: ItemsPageProps) {
           )}
         </div>
 
-        {selectedItem && (
+        {selectedItem ? (
           <section className="mt-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm md:sticky md:top-24 md:mt-0">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-bold text-gray-900">Item Detail</h2>
-              <p className="mt-1 text-sm text-gray-600">
-                {selectedItem.sku} / {selectedItem.name}
-              </p>
-            </div>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => (editing ? completeEdit() : startEdit(selectedItem))}
-              className="rounded-full bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:opacity-50"
-            >
-              {editing ? (saving ? "Saving..." : "Complete") : "Edit"}
-            </button>
-          </div>
-
-          {saveError && (
-            <div className="mt-3 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">
-              {saveError}
-            </div>
-          )}
-
-          <div className="mt-4 grid gap-3 text-sm text-gray-700 md:grid-cols-2">
-            <label className="font-medium">
-              SKU
-              <input
-                disabled={!editing}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                value={editing ? editForm.sku : selectedItem.sku}
-                onChange={(e) => setEditForm((f) => ({ ...f, sku: e.target.value }))}
-              />
-            </label>
-            <label className="font-medium">
-              Name
-              <input
-                disabled={!editing}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                value={editing ? editForm.name : selectedItem.name}
-                onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-              />
-            </label>
-            <label className="font-medium">
-              Item Type
-              <input
-                disabled
-                className="mt-1 w-full rounded-lg border border-gray-300 bg-gray-100 px-3 py-2"
-                value={selectedItem.item_type}
-              />
-            </label>
-            <label className="font-medium">
-              Managed Unit
-              <select
-                disabled={!editing}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                value={editing ? editForm.managed_unit : selectedItem.managed_unit}
-                onChange={(e) =>
-                  setEditForm((f) => ({ ...f, managed_unit: e.target.value as Item["managed_unit"] }))
-                }
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold"> Item Detail</h2>
+                <p className="mt-1 text-sm text-gray-600">
+                  {selectedItem.sku} / {selectedItem.name}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => (editing ? completeEdit() : startEdit(selectedItem))}
+                className="rounded-full bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:opacity-50"
               >
-                <option value="pcs">pcs</option>
-                <option value="g">g</option>
-              </select>
-            </label>
-            <label className="font-medium">
-              Pack Qty
-              <input
-                disabled={!editing}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                value={editing ? editForm.pack_qty : selectedItem.pack_qty?.toString() ?? ""}
-                onChange={(e) => setEditForm((f) => ({ ...f, pack_qty: e.target.value }))}
-              />
-            </label>
-            <label className="font-medium">
-              Reorder Point
-              <input
-                disabled={!editing}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                value={editing ? editForm.reorder_point : selectedItem.reorder_point?.toString() ?? "0"}
-                onChange={(e) => setEditForm((f) => ({ ...f, reorder_point: e.target.value }))}
-              />
-            </label>
-            <label className="flex items-center gap-2 font-medium">
-              <input
-                type="checkbox"
-                disabled={!editing}
-                checked={editing ? editForm.stock_managed : selectedItem.stock_managed}
-                onChange={(e) => setEditForm((f) => ({ ...f, stock_managed: e.target.checked }))}
-              />
-              Stock managed
-            </label>
-            <label className="flex items-center gap-2 font-medium">
-              <input
-                type="checkbox"
-                disabled={!editing}
-                checked={editing ? editForm.is_sellable : selectedItem.is_sellable}
-                onChange={(e) => setEditForm((f) => ({ ...f, is_sellable: e.target.checked }))}
-              />
-              Sellable
-            </label>
-            <label className="flex items-center gap-2 font-medium">
-              <input
-                type="checkbox"
-                disabled={!editing}
-                checked={editing ? editForm.is_final : selectedItem.is_final}
-                onChange={(e) => setEditForm((f) => ({ ...f, is_final: e.target.checked }))}
-              />
-              Final item
-            </label>
-            <label className="font-medium md:col-span-2">
-              Note
-              <input
-                disabled={!editing}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                value={editing ? editForm.note : selectedItem.note ?? ""}
-                onChange={(e) => setEditForm((f) => ({ ...f, note: e.target.value }))}
-              />
-            </label>
-          </div>
-
-          {selectedItem.item_type === "assembly" && (
-            <div className="mt-4 grid gap-3 border-t border-gray-100 pt-4 text-sm text-gray-700 md:grid-cols-2">
-              <label className="font-medium">
-                Manufacturer
-                <input
-                  disabled={!editing}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                  value={editing ? editForm.assembly_manufacturer : selectedItem.assembly?.manufacturer ?? ""}
-                  onChange={(e) => setEditForm((f) => ({ ...f, assembly_manufacturer: e.target.value }))}
-                />
-              </label>
-              <label className="font-medium">
-                Total Weight
-                <input
-                  disabled={!editing}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                  value={editing ? editForm.assembly_total_weight : selectedItem.assembly?.total_weight?.toString() ?? ""}
-                  onChange={(e) => setEditForm((f) => ({ ...f, assembly_total_weight: e.target.value }))}
-                />
-              </label>
-              <label className="font-medium">
-                Pack Size
-                <input
-                  disabled={!editing}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                  value={editing ? editForm.assembly_pack_size : selectedItem.assembly?.pack_size ?? ""}
-                  onChange={(e) => setEditForm((f) => ({ ...f, assembly_pack_size: e.target.value }))}
-                />
-              </label>
-              <label className="font-medium md:col-span-2">
-                Assembly Note
-                <input
-                  disabled={!editing}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                  value={editing ? editForm.assembly_note : selectedItem.assembly?.note ?? ""}
-                  onChange={(e) => setEditForm((f) => ({ ...f, assembly_note: e.target.value }))}
-                />
-              </label>
+                {editing ? (saving ? "Saving..." : "Complete") : "Edit"}
+              </button>
             </div>
-          )}
 
-          {selectedItem.item_type === "component" && (
-            <div className="mt-4 grid gap-3 border-t border-gray-100 pt-4 text-sm text-gray-700 md:grid-cols-3">
+            {saveError && (
+              <div className="mt-3 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">
+                {saveError}
+              </div>
+            )}
+
+            <div className="mt-4 grid gap-3 text-sm text-gray-700 md:grid-cols-2">
               <label className="font-medium">
-                Manufacturer
+                SKU
                 <input
                   disabled={!editing}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                  value={editing ? editForm.component_manufacturer : selectedItem.component?.manufacturer ?? ""}
-                  onChange={(e) =>
-                    setEditForm((f) => ({ ...f, component_manufacturer: e.target.value }))
-                  }
+                  value={editing ? editForm.sku : selectedItem.sku}
+                  onChange={(e) => setEditForm((f) => ({ ...f, sku: e.target.value }))}
                 />
               </label>
               <label className="font-medium">
-                Component Type
+                Name
+                <input
+                  disabled={!editing}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+                  value={editing ? editForm.name : selectedItem.name}
+                  onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </label>
+              <label className="font-medium">
+                Item Type
+                <input
+                  disabled
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-gray-100 px-3 py-2"
+                  value={selectedItem.item_type}
+                />
+              </label>
+              <label className="font-medium">
+                Managed Unit
                 <select
                   disabled={!editing}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                  value={editing ? editForm.component_type : selectedItem.component?.component_type ?? "material"}
+                  value={editing ? editForm.managed_unit : selectedItem.managed_unit}
                   onChange={(e) =>
-                    setEditForm((f) => ({ ...f, component_type: e.target.value as ComponentType }))
+                    setEditForm((f) => ({ ...f, managed_unit: e.target.value as Item["managed_unit"] }))
                   }
                 >
-                  <option value="material">material</option>
-                  <option value="part">part</option>
-                  <option value="consumable">consumable</option>
+                  <option value="pcs">pcs</option>
+                  <option value="g">g</option>
                 </select>
               </label>
               <label className="font-medium">
-                Color
+                Pack Qty
                 <input
                   disabled={!editing}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                  value={editing ? editForm.component_color : selectedItem.component?.color ?? ""}
-                  onChange={(e) => setEditForm((f) => ({ ...f, component_color: e.target.value }))}
+                  value={editing ? editForm.pack_qty : selectedItem.pack_qty?.toString() ?? ""}
+                  onChange={(e) => setEditForm((f) => ({ ...f, pack_qty: e.target.value }))}
                 />
               </label>
-              <div className="font-medium md:col-span-3">
-                Purchase URLs
-                {editing ? (
-                  <div className="mt-2 space-y-2">
-                    {editForm.component_purchase_links.map((link, idx) => (
-                      <div key={idx} className="grid gap-2 md:grid-cols-[160px_minmax(0,1fr)_auto]">
-                        <input
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                          value={link.label}
-                          onChange={(e) =>
-                            setEditForm((f) => {
-                              const next = [...f.component_purchase_links];
-                              next[idx] = { ...next[idx], label: e.target.value };
-                              return { ...f, component_purchase_links: next };
-                            })
-                          }
-                          placeholder="Link name"
-                        />
-                        <input
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
-                          value={link.url}
-                          onChange={(e) =>
-                            setEditForm((f) => {
-                              const next = [...f.component_purchase_links];
-                              next[idx] = { ...next[idx], url: e.target.value };
-                              return { ...f, component_purchase_links: next };
-                            })
-                          }
-                          placeholder="https://..."
-                        />
+              <label className="font-medium">
+                Reorder Point
+                <input
+                  disabled={!editing}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+                  value={editing ? editForm.reorder_point : selectedItem.reorder_point?.toString() ?? "0"}
+                  onChange={(e) => setEditForm((f) => ({ ...f, reorder_point: e.target.value }))}
+                />
+              </label>
+              <label className="flex items-center gap-2 font-medium">
+                <input
+                  type="checkbox"
+                  disabled={!editing}
+                  checked={editing ? editForm.stock_managed : selectedItem.stock_managed}
+                  onChange={(e) => setEditForm((f) => ({ ...f, stock_managed: e.target.checked }))}
+                />
+                Stock managed
+              </label>
+              <label className="flex items-center gap-2 font-medium">
+                <input
+                  type="checkbox"
+                  disabled={!editing}
+                  checked={editing ? editForm.is_sellable : selectedItem.is_sellable}
+                  onChange={(e) => setEditForm((f) => ({ ...f, is_sellable: e.target.checked }))}
+                />
+                Sellable
+              </label>
+              <label className="flex items-center gap-2 font-medium">
+                <input
+                  type="checkbox"
+                  disabled={!editing}
+                  checked={editing ? editForm.is_final : selectedItem.is_final}
+                  onChange={(e) => setEditForm((f) => ({ ...f, is_final: e.target.checked }))}
+                />
+                Final item
+              </label>
+              <label className="font-medium md:col-span-2">
+                Note
+                <input
+                  disabled={!editing}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+                  value={editing ? editForm.note : selectedItem.note ?? ""}
+                  onChange={(e) => setEditForm((f) => ({ ...f, note: e.target.value }))}
+                />
+              </label>
+            </div>
+
+            {selectedItem.item_type === "assembly" && (
+              <div className="mt-4 grid gap-3 border-t border-gray-100 pt-4 text-sm text-gray-700 md:grid-cols-2">
+                <label className="font-medium">
+                  Manufacturer
+                  <input
+                    disabled={!editing}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+                    value={editing ? editForm.assembly_manufacturer : selectedItem.assembly?.manufacturer ?? ""}
+                    onChange={(e) => setEditForm((f) => ({ ...f, assembly_manufacturer: e.target.value }))}
+                  />
+                </label>
+                <label className="font-medium">
+                  Total Weight
+                  <input
+                    disabled={!editing}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+                    value={editing ? editForm.assembly_total_weight : selectedItem.assembly?.total_weight?.toString() ?? ""}
+                    onChange={(e) => setEditForm((f) => ({ ...f, assembly_total_weight: e.target.value }))}
+                  />
+                </label>
+                <label className="font-medium">
+                  Pack Size
+                  <input
+                    disabled={!editing}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+                    value={editing ? editForm.assembly_pack_size : selectedItem.assembly?.pack_size ?? ""}
+                    onChange={(e) => setEditForm((f) => ({ ...f, assembly_pack_size: e.target.value }))}
+                  />
+                </label>
+                <label className="font-medium md:col-span-2">
+                  Assembly Note
+                  <input
+                    disabled={!editing}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+                    value={editing ? editForm.assembly_note : selectedItem.assembly?.note ?? ""}
+                    onChange={(e) => setEditForm((f) => ({ ...f, assembly_note: e.target.value }))}
+                  />
+                </label>
+              </div>
+            )}
+
+            {selectedItem.item_type === "component" && (
+              <div className="mt-4 grid gap-3 border-t border-gray-100 pt-4 text-sm text-gray-700 md:grid-cols-3">
+                <label className="font-medium">
+                  Manufacturer
+                  <input
+                    disabled={!editing}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+                    value={editing ? editForm.component_manufacturer : selectedItem.component?.manufacturer ?? ""}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, component_manufacturer: e.target.value }))
+                    }
+                  />
+                </label>
+                <label className="font-medium">
+                  Component Type
+                  <select
+                    disabled={!editing}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+                    value={editing ? editForm.component_type : selectedItem.component?.component_type ?? "material"}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, component_type: e.target.value as ComponentType }))
+                    }
+                  >
+                    <option value="material">material</option>
+                    <option value="part">part</option>
+                    <option value="consumable">consumable</option>
+                  </select>
+                </label>
+                <label className="font-medium">
+                  Color
+                  <input
+                    disabled={!editing}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+                    value={editing ? editForm.component_color : selectedItem.component?.color ?? ""}
+                    onChange={(e) => setEditForm((f) => ({ ...f, component_color: e.target.value }))}
+                  />
+                </label>
+                <div className="font-medium md:col-span-3">
+                  Purchase URLs
+                  {editing ? (
+                    <div className="mt-2 space-y-2">
+                      {editForm.component_purchase_links.map((link, idx) => (
+                        <div key={idx} className="grid gap-2 md:grid-cols-[160px_minmax(0,1fr)_auto]">
+                          <input
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+                            value={link.label}
+                            onChange={(e) =>
+                              setEditForm((f) => {
+                                const next = [...f.component_purchase_links];
+                                next[idx] = { ...next[idx], label: e.target.value };
+                                return { ...f, component_purchase_links: next };
+                              })
+                            }
+                            placeholder="Link name"
+                          />
+                          <input
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+                            value={link.url}
+                            onChange={(e) =>
+                              setEditForm((f) => {
+                                const next = [...f.component_purchase_links];
+                                next[idx] = { ...next[idx], url: e.target.value };
+                                return { ...f, component_purchase_links: next };
+                              })
+                            }
+                            placeholder="https://..."
+                          />
+                          <button
+                            type="button"
+                            className="rounded-full border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                            onClick={() =>
+                              setEditForm((f) => ({
+                                ...f,
+                                component_purchase_links: f.component_purchase_links.filter((_, i) => i !== idx),
+                              }))
+                            }
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                      <div>
                         <button
                           type="button"
                           className="rounded-full border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100"
                           onClick={() =>
                             setEditForm((f) => ({
                               ...f,
-                              component_purchase_links: f.component_purchase_links.filter((_, i) => i !== idx),
+                              component_purchase_links: [...f.component_purchase_links, { url: "", label: "" }],
                             }))
                           }
                         >
-                          Remove
+                          Add
                         </button>
                       </div>
-                    ))}
-                    <div>
-                      <button
-                        type="button"
-                        className="rounded-full border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100"
-                        onClick={() =>
-                          setEditForm((f) => ({
-                            ...f,
-                            component_purchase_links: [...f.component_purchase_links, { url: "", label: "" }],
-                          }))
-                        }
-                      >
-                        Add
-                      </button>
                     </div>
-                  </div>
-                ) : (
-                  <div className="mt-2 space-y-1 text-sm">
-                    {selectedItem.component?.purchase_links && selectedItem.component.purchase_links.length > 0 ? (
-                      selectedItem.component.purchase_links.map((link) => (
-                        <a
-                          key={`${link.id ?? link.url}-${link.url}`}
-                          href={link.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="block break-all text-blue-700 underline"
-                        >
-                          {link.label?.trim() ? `${link.label} - ${link.url}` : link.url}
-                        </a>
-                      ))
-                    ) : (
-                      <p className="text-gray-500">-</p>
-                    )}
-                  </div>
-                )}
+                  ) : (
+                    <div className="mt-2 space-y-1 text-sm">
+                      {selectedItem.component?.purchase_links && selectedItem.component.purchase_links.length > 0 ? (
+                        selectedItem.component.purchase_links.map((link) => (
+                          <a
+                            key={`${link.id ?? link.url}-${link.url}`}
+                            href={link.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block break-all text-blue-700 underline"
+                          >
+                            {link.label?.trim() ? `${link.label} - ${link.url}` : link.url}
+                          </a>
+                        ))
+                      ) : (
+                        <p className="text-gray-500">-</p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </section>
+        ) : (
+          <section className="mt-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm md:sticky md:top-24 md:mt-0">
+            <h2 className="text-lg font-bold"> Item Detail</h2>
+            <p className="mt-2 text-sm text-gray-500">左の一覧からアイテムを選択してください。</p>
           </section>
         )}
       </div>

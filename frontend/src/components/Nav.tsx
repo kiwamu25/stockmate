@@ -84,8 +84,13 @@ export default function Nav() {
           >
             {menuOpen ? "Close" : "Menu"}
           </button>
-          <Link to="/" className="text-center text-lg font-black tracking-tight text-white sm:text-left">
-            StockMate
+          <Link to="/" className="inline-flex items-center gap-2 text-center sm:text-left">
+            <img
+              src="/stockmate-icon.svg"
+              alt="Stockmate"
+              className="h-7 w-7 rounded-md bg-white/95 p-0.5 shadow-sm"
+            />
+            <span className="text-lg font-black tracking-tight text-orange-400">stockmate</span>
           </Link>
         </div>
 

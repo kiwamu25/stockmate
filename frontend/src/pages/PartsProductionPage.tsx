@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import NumericStepper from "../components/NumericStepper";
 import type { ComponentType } from "../types/item";
-import { formatUtcTextToLocal } from "../utils/datetime";
 
 type ProductionPart = {
   item_id: number;
@@ -196,7 +195,6 @@ export default function PartsProductionPage() {
                   <th className="p-3">Name</th>
                   <th className="p-3">Rev</th>
                   <th className="p-3">Stock</th>
-                  <th className="p-3">Updated</th>
                   <th className="p-3">入庫数</th>
                 </tr>
               </thead>
@@ -209,7 +207,6 @@ export default function PartsProductionPage() {
                     <td className="p-3 text-sm text-gray-700">
                       {item.stock_qty} {item.managed_unit}
                     </td>
-                    <td className="p-3 text-sm text-gray-700">{formatUtcTextToLocal(item.updated_at)}</td>
                     <td className="p-3">
                       <NumericStepper
                         value={qtyById[item.item_id] ?? "0"}
