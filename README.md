@@ -3,6 +3,9 @@
 Go + SQLite + React で構成された在庫/BOM 管理アプリです。  
 `component` と `assembly` を管理し、アセンブリの構成部品リビジョンと在庫調整を扱えます。
 
+ローカル運用（localhost）を前提とした構成です。
+外部公開時に必要な安全策（認証/認可、TLS終端、レート制限、WAF、監査ログ等）はこのリポジトリでは未実装です。
+
 ## Stack
 - Backend: Go (`net/http`, `chi`), SQLite
 - Frontend: React (Vite), TypeScript, TailwindCSS
@@ -106,11 +109,6 @@ run.bat
 
 Then open:
 - `http://localhost:8080`
-
-## Notes
-- 現在の migration は legacy 互換処理を削除しており、最新スキーマ前提です。
-- 旧スキーマDBを使っている場合は DB ファイルを削除して再作成してください。
-  - 例: `data/stockmate.db` または `data/app.db`
 
 ## License
 - MIT License (`LICENSE`)
