@@ -62,7 +62,6 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
   const [components, setComponents] = useState<SelectedComponent[]>([]);
   const [revisions, setRevisions] = useState<AssemblyRevision[]>([]);
   const [currentRevNo, setCurrentRevNo] = useState<number | null>(null);
-  const [currentCreatedAt, setCurrentCreatedAt] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -103,7 +102,6 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
     setComponents([]);
     setRevisions([]);
     setCurrentRevNo(null);
-    setCurrentCreatedAt("");
     setError("");
     setMessage("");
   }, [sidebarListType]);
@@ -116,7 +114,6 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
 
     setRevisions(data.revisions ?? []);
     setCurrentRevNo(data.current_rev_no ?? null);
-    setCurrentCreatedAt(data.current_created_at ?? "");
     setComponents(
       (data.components ?? []).map((component) => ({
         itemId: component.component_item_id,
@@ -135,7 +132,6 @@ export default function AssemblyBuilderPage({ items }: AssemblyBuilderPageProps)
       setComponents([]);
       setRevisions([]);
       setCurrentRevNo(null);
-      setCurrentCreatedAt("");
       return;
     }
 

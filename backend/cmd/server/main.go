@@ -4,8 +4,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
+	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -201,9 +204,65 @@ func main() {
 	r.Post("/api/production/shipments/complete", completeShipments(conn))
 	r.Put("/api/items/{id}", updateItem(conn))
 
+	if staticDir := resolveStaticDir(); staticDir != "" {
+		fmt.Println("serving frontend from:", staticDir)
+		r.NotFound(spaFileServer(staticDir))
+	}
+
 	fmt.Println("listening on :8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		panic(err)
+	}
+}
+
+func resolveStaticDir() string {
+	if custom := strings.TrimSpace(os.Getenv("STATIC_DIR")); custom != "" {
+		if isDir(custom) {
+			return custom
+		}
+		fmt.Println("STATIC_DIR not found:", custom)
+		return ""
+	}
+
+	candidates := []string{
+		"./frontend/dist",
+		"../frontend/dist",
+		"/app/frontend/dist",
+	}
+
+	for _, dir := range candidates {
+		if isDir(dir) {
+			return dir
+		}
+	}
+	return ""
+}
+
+func isDir(dir string) bool {
+	info, err := os.Stat(dir)
+	return err == nil && info.IsDir()
+}
+
+func spaFileServer(staticDir string) http.HandlerFunc {
+	fileFS := os.DirFS(staticDir)
+	fileServer := http.FileServer(http.Dir(staticDir))
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		cleanPath := path.Clean("/" + r.URL.Path)
+		rel := strings.TrimPrefix(cleanPath, "/")
+		if rel == "" {
+			rel = "index.html"
+		}
+
+		if rel != "index.html" {
+			if _, err := fs.Stat(fileFS, rel); err == nil {
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+		}
+
+		indexPath := filepath.Join(staticDir, "index.html")
+		http.ServeFile(w, r, indexPath)
 	}
 }
 

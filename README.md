@@ -76,6 +76,37 @@ Compose default:
 - Backend URL: `http://localhost:8080`
 - DB: `./data/app.db` (host volume mounted)
 
+## Run (USB Package / No Docker)
+Build package (Linux):
+```bash
+INSTALL_DEPS=1 ./scripts/build_usb.sh
+```
+
+Build package (Linux, deps already installed):
+```bash
+./scripts/build_usb.sh
+```
+
+Build package (Windows .exe):
+```bash
+INSTALL_DEPS=1 TARGET_OS=windows TARGET_ARCH=amd64 ./scripts/build_usb.sh
+```
+
+Run package (Linux/macOS):
+```bash
+cd dist/usb
+./run.sh
+```
+
+Run package (Windows):
+```bat
+cd dist\usb
+run.bat
+```
+
+Then open:
+- `http://localhost:8080`
+
 ## Notes
 - 現在の migration は legacy 互換処理を削除しており、最新スキーマ前提です。
 - 旧スキーマDBを使っている場合は DB ファイルを削除して再作成してください。
